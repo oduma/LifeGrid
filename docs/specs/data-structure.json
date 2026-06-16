@@ -1,0 +1,86 @@
+{
+  "User_Profile": {
+    "UserID": "String",
+    "Current_Level": "Integer",
+    "Economy": {
+      "Lifetime_GP_Average": "Float // Global average progression across all goals",
+      "Lifetime_XP": "Integer",
+      "Current_SP": "Integer (0-29) // Progress towards next Shield",
+      "Shields_Available": "Integer (0-3)",
+      "Max_Shield_Cap": "Integer (2 or 3)"
+    },
+    "Active_States": {
+      "Double_XP_Mode": "Boolean",
+      "Double_XP_Expiry": "DateTime"
+    },
+    "Trophy_Room_Badges": [
+      {
+        "BadgeID": "String",
+        "Badge_Type": "String (e.g., Showing_Up_Gold, Momentum_Overachiever)",
+        "Description": "String",
+        "Date_Earned": "DateTime"
+      }
+    ]
+  },
+
+  "Goal": {
+    "GoalID": "String",
+    "UserID": "String",
+    "Description": "String",
+    "Ambient_Tag": "String",
+    "Duration": "String // Textual representation (e.g., '6 months')",
+    "Deadline_Date": "DateTime",
+    "Status": "String (Active, Overwhelmed, Abandoned, Completed)",
+    "Linked_Bad_Habits": [
+      {
+        "BadHabitID": "String",
+        "Description": "String",
+        "Danger_Level": "Integer (1-5)"
+      }
+    ]
+  },
+
+  "Week": {
+    "WeekID": "String",
+    "Week_Number": "Integer",
+    "Start_Date": "DateTime",
+    "Status": "String (Active, Hibernated, Frozen)",
+    "Global_Metrics": {
+      "Total_Weekly_SP_Earned": "Integer // SP isn't penalised by goals, so it can stay global"
+    },
+    "Week_Goal_Items": [
+      {
+        "Week_GoalID": "String // Primary Key for this junction record",
+        "GoalID": "String // Foreign Key to the Goal",
+        "Penalty_State": "String (Clean, Level_1_Warning, Probation_Week_2, Reckoning_Week_3)",
+        "Metrics": {
+          "Goal_Weekly_GP": "Float // The strict evaluation metric for THIS specific goal",
+          "Goal_Weekly_XP_Earned": "Integer // Tracked here so it can be independently slashed by 50% or 100% during probation"
+        }
+      }
+    ]
+  },
+
+  "Habit": {
+    "HabitID": "String",
+    "Week_GoalID": "String // Foreign Key linking directly to the specific Goal's week state",
+    "Habit_Type": "String (Planned, Moment Burst, Flash)",
+    "Habit_Name": "String",
+    "Habit_Description": "String",
+    "Target": {
+      "Target_Value": "Float",
+      "Measurement_Unit": "String",
+      "Deadline_DateTime": "DateTime"
+    },
+    "Completed_Values_Log": [
+      {
+        "LogID": "String",
+        "Actual_Value": "Float",
+        "Measurement_Unit": "String",
+        "Proof_Text": "String (Nullable)",
+        "Proof_Image_URL": "String (Nullable)",
+        "Timestamp": "DateTime"
+      }
+    ]
+  }
+}
