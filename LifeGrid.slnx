@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/LifeGrid.Application/LifeGrid.Application.csproj" />
+    <Project Path="src/LifeGrid.Domain/LifeGrid.Domain.csproj" />
+    <Project Path="src/LifeGrid.Infrastructure/LifeGrid.Infrastructure.csproj" />
+    <Project Path="src/LifeGrid.Presentation/LifeGrid.Presentation.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/LifeGrid.Application.Tests/LifeGrid.Application.Tests.csproj" />
+    <Project Path="tests/LifeGrid.Domain.Tests/LifeGrid.Domain.Tests.csproj" />
+    <Project Path="tests/LifeGrid.Infrastructure.Tests/LifeGrid.Infrastructure.Tests.csproj" />
+  </Folder>
+</Solution>

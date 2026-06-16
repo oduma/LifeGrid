@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-ChildItem -Path \"c:\\\\Code\\\\LifeGrid\" -Depth 2 | Where-Object { $_.Name -notmatch \"^\\\\.git|^docs|^\\\\.claude\" } | Select-Object FullName, PSIsContainer)",
+      "PowerShell(New-Item -ItemType Directory -Force \"c:\\\\Code\\\\LifeGrid\\\\docs\\\\requirements\")",
+      "PowerShell(New-Item -ItemType Directory -Force \"c:\\\\Code\\\\LifeGrid\\\\docs\\\\plans\")"
+    ]
+  }
+}
