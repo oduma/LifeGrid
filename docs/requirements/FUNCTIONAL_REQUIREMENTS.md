@@ -337,3 +337,109 @@ All acceptance criteria met. `dotnet build LifeGrid.slnx` → **Build succeeded.
 | Infrastructure | 4 | All passed |
 | Pre-existing stubs | 3 | All passed |
 | **Total** | **24** | **All passed** |
+
+---
+
+# Phase 3 — Secure AI Credential Initializer Baseline
+
+## Context
+Phase 3 establishes the secure build-time key injection pipeline and first-launch synchronization engine for the Gemini AI provider. No live network calls or feature screens are added. All work is infrastructure-level.
+
+*Requirements source: `docs/requirements/Phase-3-requirements.md`. Note: P3.1 deviates from the original spec (User Secrets Manager) — replaced with a file-based approach at developer request.*
+
+---
+
+## P3.1 — Secret File Storage Architecture
+- The Gemini API key is stored as a single-line plain text file at `z-ai-com\gemini.api.key` in the repository root.
+- The `z-ai-com` directory is excluded from source control via the existing `.gitignore` rule (`*z-ai-com`).
+- No `.NET User Secrets Manager` configuration is added. The file at `z-ai-com\gemini.api.key` is the sole developer-local secret store for this key.
+
+## P3.2 — Build-Time Code Generation
+- A custom MSBuild `BeforeBuild` target in `LifeGrid.Infrastructure.csproj` reads `z-ai-com\gemini.api.key` at compile time (resolved relative to the Infrastructure project directory via MSBuild path functions).
+- The target XOR-encodes every UTF-8 byte of the key with a fixed compile-time salt `0xAB` (171).
+- The encoded bytes are written into a generated C# source file at `$(MSBuildProjectDirectory)\obj\BuildSecretProvider.g.cs`.
+- The generated class implements `IBuildSecretProvider` and is compiled into the `LifeGrid.Infrastructure` assembly via a `<Compile Include>` item added by the target.
+- The generated file lives entirely within `obj\` — already git-ignored. Its contents never appear in source control.
+
+## P3.3 — Build Failsafe
+- If `z-ai-com\gemini.api.key` does not exist: the MSBuild target emits `<Error>` and the build stops with a human-readable message directing the developer to run `scripts\setup-dev-secrets.ps1`.
+- If the file exists but is empty (or whitespace-only): same `<Error>`.
+
+## P3.4 — In-Memory Obfuscation Contract (`IBuildSecretProvider`)
+- `IBuildSecretProvider` is an `internal` interface in `LifeGrid.Infrastructure/Security/`.
+- It exposes two members: `byte[] GetObfuscatedBytes()` and `byte GetXorSalt()`.
+- The generated `BuildSecretProvider` class returns only the XOR-encoded byte array and the salt constant. It never exposes the plaintext key string as a member or literal.
+- `[assembly: InternalsVisibleTo("LifeGrid.Infrastructure.Tests")]` is declared on the Infrastructure assembly so NSubstitute can mock `IBuildSecretProvider` in tests.
+
+## P3.5 — SecureStorage Abstraction Layer (`ISecureStorageService`)
+- `ISecureStorageService` is a `public` interface in `LifeGrid.Infrastructure/Security/`.
+- It exposes: `Task<string?> GetAsync(string key)` and `Task SetAsync(string key, string value)`.
+- `SecureStorageService` (internal concrete class) wraps `Microsoft.Maui.Storage.SecureStorage.GetAsync` / `SetAsync` directly.
+- `LifeGrid.Infrastructure.csproj` adds a `Microsoft.Maui.Controls` package reference to enable this. A `Directory.Build.props` file at the solution root defines a shared `$(MauiVersion)` property so Infrastructure and Presentation resolve the same version.
+
+## P3.6 — First-Launch Synchronization Engine (`ApiCredentialSyncService`)
+- `IApiCredentialSyncService` is a `public` interface in `LifeGrid.Infrastructure/Security/`.
+- It exposes: `Task SyncAsync(CancellationToken ct = default)`.
+- `ApiCredentialSyncService` (internal concrete) implements the following deterministic logic:
+  1. `existing = await ISecureStorageService.GetAsync("Gemini_Provider_Token")`
+  2. **Case A — token exists** (`existing != null`): return immediately. `IBuildSecretProvider` is never accessed.
+  3. **Case B — token missing** (`existing == null`):
+     - Retrieve `byte[] obfuscated` from `IBuildSecretProvider.GetObfuscatedBytes()`
+     - XOR-decode into a volatile `byte[] decoded` using `IBuildSecretProvider.GetXorSalt()`
+     - Decode UTF-8 to plaintext `string plaintext`
+     - `await ISecureStorageService.SetAsync("Gemini_Provider_Token", plaintext)`
+     - `Array.Clear(decoded)` → assign `decoded = null` (zero-out volatile memory segment)
+
+## P3.7 — Startup Integration
+- `App.xaml.cs` constructor adds `IApiCredentialSyncService` as a constructor parameter.
+- `App.OnStart()` calls `await _credentialSync.SyncAsync()` as the first statement — before the existing `GetOrCreateOnboardingSessionQuery` dispatch.
+
+## P3.8 — Developer Setup Script
+- New file: `scripts\setup-dev-secrets.ps1` at the repository root.
+- Script actions in order:
+  1. Assert `dotnet` CLI is available on `$PATH`.
+  2. Create `z-ai-com\` directory in the repo root if it does not exist.
+  3. Prompt developer: `"Enter your Gemini API key:"` (masked input via `Read-Host -AsSecureString`).
+  4. Write the plaintext key to `z-ai-com\gemini.api.key`.
+  5. Run `dotnet build LifeGrid.slnx` to verify the key file satisfies the hard-fail check.
+  6. Print success banner or error with actionable troubleshooting hint.
+
+## P3.9 — TDD Coverage Requirements
+- Test file: `tests/LifeGrid.Infrastructure.Tests/Security/ApiCredentialSyncServiceTests.cs`
+- Tools: NSubstitute (mock `ISecureStorageService` and `IBuildSecretProvider`), FluentAssertions.
+- 4 tests, 100% branch coverage of `ApiCredentialSyncService.SyncAsync`:
+
+| # | Test | Setup | Assertion |
+|---|---|---|---|
+| 1 | `WhenTokenExists_DoesNotAccessBuildSecretProvider` | `GetAsync` → `"tok"` | `GetObfuscatedBytes()` received 0 times |
+| 2 | `WhenTokenExists_DoesNotWriteToStorage` | `GetAsync` → `"tok"` | `SetAsync` received 0 times |
+| 3 | `WhenTokenMissing_WritesDecodedTokenExactlyOnce` | `GetAsync` → `null`; provider returns known XOR-encoded bytes | `SetAsync("Gemini_Provider_Token", <expected decoded string>)` received exactly 1 time |
+| 4 | `WhenTokenMissing_SecondCallIsIdempotent` | 1st call: `GetAsync` → `null`; 2nd call: `GetAsync` → `"tok"` | `SetAsync` received exactly 1 time across both invocations |
+
+## P3.10 — Acceptance Criteria
+- `dotnet build LifeGrid.slnx` succeeds when `z-ai-com\gemini.api.key` contains a non-empty value.
+- `dotnet build LifeGrid.slnx` fails with a descriptive MSBuild error when the file is absent or empty.
+- `dotnet test` passes — all 4 new tests green; total test count increases from 24 to 28.
+- First app launch: `Gemini_Provider_Token` is written to device `SecureStorage` exactly once.
+- Subsequent launches: sync engine exits at Case A without accessing `BuildSecretProvider`.
+- Running `scripts\setup-dev-secrets.ps1` on a clean machine produces a passing build end-to-end.
+
+## P3.11 As-Built Outcome (2026-06-17)
+
+All acceptance criteria met. `dotnet build LifeGrid.slnx` → **Build succeeded. 0 Error(s). 0 Warning(s).** `dotnet test` → **28 tests passed.**
+
+### Corrections vs. Plan
+
+| Item | Planned | As Built |
+|---|---|---|
+| `InternalsVisibleTo` entries | `InternalsVisibleTo("LifeGrid.Infrastructure.Tests")` only | Two entries required: `InternalsVisibleTo("LifeGrid.Infrastructure.Tests")` **and** `InternalsVisibleTo("DynamicProxyGenAssembly2")`. NSubstitute's Castle DynamicProxy generates mock proxies in a runtime-emitted assembly named `DynamicProxyGenAssembly2`; without this second entry the proxy generator cannot access the `internal` `IBuildSecretProvider` interface and throws `ArgumentException` at test runtime. Both entries are declared as `<AssemblyAttribute>` items in `Infrastructure.csproj`. |
+
+### Test Counts by Layer
+
+| Layer | Tests | Result |
+|---|---|---|
+| Domain | 12 | All passed |
+| Application | 7 | All passed |
+| Infrastructure | 9 | All passed (5 existing + 4 new) |
+| **Total** | **28** | **All passed** |
+- Running `scripts\setup-dev-secrets.ps1` on a clean machine produces a passing build end-to-end.

@@ -27,7 +27,7 @@ Calculate relative timelines into absolute dates based on today's date of June 1
   "goal": {
     "description": "Clear, extracted definition of the destination/achievement",
     "duration": "Extracted duration string from user text (e.g., '6 months', '1 year', 'by December')",
-    "deadline_date": "YYYY-MM-DD (Calculated absolute date based on the duration or date given relative to June 10, 2026)",
+    "deadline_date": "YYYY-MM-DD HH:mm:ss (Calculated absolute date based on the duration or date given relative to June 10, 2026)",
     "ambient_tag": "Physical" | "Intellectual" | "Self Improvement" | "Other"
   }
 }

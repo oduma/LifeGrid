@@ -14,7 +14,7 @@ The setup architecture is designed to be mathematically clean, psychologically m
     • Descriptions + Deadlines                     • Contextual scaling curves
 
 ### 1.2 Goal-Driven Onboarding
-* **Multi-Goal Support:** Users can input multiple, multifaceted goals right from day one (e.g., "Run a Marathon in 6 months", "Learn Spanish in 1 year").
+* **Multi-Goal Support:** Users can input multiple goals right from day one (e.g., "Run a Marathon in 6 months", "Learn Spanish in 1 year").
 * **User Entry:** each Goal will be entered in **free text input**.
 * **Required Attributes:** Each goal will be analised by an AI and will result in being transformed in structured data with a **Clear Description** and an absolute **Deadline**.
 * **Ambient Tagging:** The AI automatically handles high-level categorization (e.g., Physical, Intellectual) as background tags without forcing the user to navigate a rigid menu.
@@ -22,7 +22,7 @@ The setup architecture is designed to be mathematically clean, psychologically m
 * **Wireframe:** <file path=".\assets\wireframes\wf1.png">
 
 ### 1.3 Goal Context Interrogation (Inline Onboarding)
-* **Workflow Placement:** Immediately after the user inputs their high-level goals and deadlines, but *before* the AI generates the pool of habits.
+* **Workflow Placement:** Immediately after the user inputs their high-level goal and deadlines, but *before* the AI generates the pool of habits.
 * **Contextual Trigger:** The AI analyzes the text of the goal and surfaces a maximum of **3 highly targeted, goal-specific baseline questions**. This is handled dynamically via chat or a minimal form interface.
 
     [User Inputs Goal] ──> [AI Generates 2-3 Specific Baseline Questions] ──> [AI Generates Habits]

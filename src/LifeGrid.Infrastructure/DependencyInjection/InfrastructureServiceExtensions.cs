@@ -1,6 +1,7 @@
 using LifeGrid.Application.Onboarding;
 using LifeGrid.Infrastructure.Data;
 using LifeGrid.Infrastructure.Data.Repositories;
+using LifeGrid.Infrastructure.Security;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -15,6 +16,11 @@ public static class InfrastructureServiceExtensions
         services.AddDbContext<LifeGridDbContext>(opts =>
             opts.UseSqlite(connectionString));
         services.AddScoped<IOnboardingRepository, OnboardingRepository>();
+
+        services.AddSingleton<ISecureStorageService, SecureStorageService>();
+        services.AddSingleton<IBuildSecretProvider, BuildSecretProvider>();
+        services.AddTransient<IApiCredentialSyncService, ApiCredentialSyncService>();
+
         return services;
     }
 }

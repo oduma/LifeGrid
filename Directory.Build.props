@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <!-- Keep in sync with the installed MAUI workload. Verify with: dotnet workload list -->
+    <MauiVersion>10.0.20</MauiVersion>
+  </PropertyGroup>
+</Project>
