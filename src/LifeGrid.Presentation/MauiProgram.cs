@@ -1,3 +1,9 @@
+using LifeGrid.Application.Onboarding.Queries;
+using LifeGrid.Infrastructure.Data;
+using LifeGrid.Infrastructure.DependencyInjection;
+using Microsoft.EntityFrameworkCore;
+using LifeGrid.Presentation.Pages;
+using LifeGrid.Presentation.ViewModels;
 using Microsoft.Extensions.Logging;
 using SkiaSharp.Views.Maui.Controls.Hosting;
 
@@ -20,10 +26,29 @@ public static class MauiProgram
                 fonts.AddFont("MaterialSymbolsRounded.ttf", "MaterialSymbolsRounded");
             });
 
+        var dbPath = Path.Combine(FileSystem.AppDataDirectory, "lifegrid.db");
+        builder.Services.AddInfrastructure($"Data Source={dbPath}");
+
+        builder.Services.AddMediatR(cfg =>
+            cfg.RegisterServicesFromAssembly(typeof(GetOrCreateOnboardingSessionQuery).Assembly));
+
+        builder.Services.AddSingleton<AppShellViewModel>();
+        builder.Services.AddSingleton<AppShell>();
+        builder.Services.AddTransient<SetupViewModel>();
+        builder.Services.AddTransient<SetupPage>();
+
 #if DEBUG
         builder.Logging.AddDebug();
 #endif
 
-        return builder.Build();
+        var app = builder.Build();
+
+        using (var scope = app.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LifeGridDbContext>();
+            db.Database.Migrate();
+        }
+
+        return app;
     }
 }

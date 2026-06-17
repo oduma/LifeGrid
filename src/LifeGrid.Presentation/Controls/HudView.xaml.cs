@@ -7,7 +7,8 @@ public partial class HudView : ContentView
         InitializeComponent();
     }
 
-    private void OnProfileTapped(object? sender, TappedEventArgs e) { }
+    private async void OnProfileTapped(object? sender, TappedEventArgs e)
+        => await Shell.Current.GoToAsync("setup");
 
     private void OnNotificationsTapped(object? sender, TappedEventArgs e) { }
 }

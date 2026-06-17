@@ -212,3 +212,128 @@ All acceptance criteria met. `dotnet build LifeGrid.slnx` → **Build succeeded.
 | Vault | `social_leaderboard` | `&#xF6A0;` | Material Symbols Rounded |
 | HUD left | `account_circle` | `&#xE853;` | Material Symbols Rounded |
 | HUD right | `notifications` | `&#xE7F4;` | Material Symbols Rounded |
+
+---
+
+# Phase 2 — Onboarding State Engine & Step 1 Setup (Goal Draft)
+
+**Source:** `docs/requirements/Phase-2-requirements.md`  
+**Design authority refs:** `docs/specs/style-guide.md`, `docs/specs/screen-layout-specification.md`, `docs/specs/navigation-architecture.md`
+
+## P2.1 Onboarding Bounded Context
+- A new `Onboarding` bounded context is introduced alongside the three production contexts (GoalManagement, BehavioralEconomy, InteractionLog).
+- This context is transient: it governs the one-time initialization sequence. Once complete, it yields control to the production contexts.
+- All domain types for this context live under `src/LifeGrid.Domain/Onboarding/`.
+
+## P2.2 OnboardingSession Domain Entity
+- An `OnboardingSession` entity represents the persistent state of the initialization sequence.
+- **Fields:**
+  - `SessionId` (Guid) — primary key, assigned on creation.
+  - `CurrentStep` (`OnboardingStep` enum) — `Unstarted` | `Step1_GoalDraftCaptured`.
+  - `IsComplete` (bool) — flags whether the full sequence is finalized. Permanently `false` in Phase 2 (subsequent steps do not exist yet).
+  - `RawGoalDraft` (string?) — nullable raw text captured in Step 1. Bypasses all structural domain validations (durations, categories, deadlines) imposed by the production `Goal` aggregate.
+  - `LastActiveTimestamp` (DateTime UTC) — updated on every mutation.
+- **Domain invariants:**
+  - `IsComplete` may only become `true` when all required setup steps exist and are satisfied. In Phase 2, no code path sets it to `true`.
+  - `RawGoalDraft` must be stored as-is; no trimming, parsing, or validation is applied at the domain level.
+- **Domain methods:** `UpdateDraft(string draft)`, `AdvanceToStep1()`.
+- No EF Core or persistence annotations on the entity — all DB mapping is via Fluent API in Infrastructure.
+
+## P2.3 Result Pattern
+- `Result` and `Result<T>` value types defined in `src/LifeGrid.Domain/Common/` and used across all Application/Domain boundaries in lieu of exceptions for expected validation failures.
+
+## P2.4 Application Layer — MediatR Use Cases
+- `IOnboardingRepository` interface defined in `src/LifeGrid.Application/Onboarding/` (Infrastructure implements it).
+- Three MediatR operations:
+  - `GetOrCreateOnboardingSessionQuery` → `Result<OnboardingSession>`: fetches the active session or creates and persists a new one (`Unstarted`) if none exists.
+  - `UpdateGoalDraftCommand(string Draft)` → `Result`: persists the current draft text to the DB.
+  - `CompleteStep1Command` → `Result<OnboardingSession>`: transitions `CurrentStep` from `Unstarted` to `Step1_GoalDraftCaptured` and persists.
+
+## P2.5 Infrastructure — EF Core & Migrations
+- Full EF Core with SQLite is introduced in this phase per TECHNICAL_STANDARDS.md.
+- `LifeGridDbContext` introduced in `src/LifeGrid.Infrastructure/Data/` with `DbSet<OnboardingSession>`.
+- Fluent API configuration maps `OnboardingSession` to table name `OnboardingProgressCache`. No data annotations on domain types.
+- `IDesignTimeDbContextFactory<LifeGridDbContext>` defined in Infrastructure for `dotnet ef` tooling.
+- `Microsoft.EntityFrameworkCore.Tools` added to Infrastructure project for migration generation.
+- First EF Core migration: `InitialOnboardingSchema`.
+- `MauiProgram.cs` invokes `context.Database.Migrate()` synchronously before app initialization completes, per the Zero Data Loss Policy.
+- **Composition Root rule:** `LifeGrid.Presentation.csproj` adds a P2P reference to `LifeGrid.Infrastructure` solely to enable DI wiring in `MauiProgram.cs`. No Infrastructure types are used directly in ViewModels or Pages — only abstractions defined in Application.
+
+## P2.6 Onboarding Flow — App Launch Behavior
+On every cold start, the app:
+- **Case A (no DB record):** Creates a new `OnboardingSession` with `CurrentStep = Unstarted`, persists it, and navigates to `SetupPage`.
+- **Case B (record found, `Unstarted`):** Loads the existing session and navigates to `SetupPage` with an empty input field.
+- **Case C (record found, `Step1_GoalDraftCaptured`):** Loads the existing session, navigates to `SetupPage`, pre-populates the input field with `RawGoalDraft`, and renders the "Step 1 Complete" message area instead of the "Next" button.
+
+## P2.7 Navigation Lock
+- `AppShellViewModel` exposes `IsOnboardingComplete` (bool observable property, defaults to `false`).
+- All four bottom `Tab` elements in `AppShell.xaml` bind `IsEnabled` to `AppShellViewModel.IsOnboardingComplete`.
+- In Phase 2 this value is always `false` → all tabs are always disabled and non-interactive.
+- The binding is intentional architectural scaffolding: Phase 3 unlocks tabs by completing the onboarding sequence without any UI changes.
+
+## P2.8 SetupPage (Profile/Setup Destination)
+- A new `SetupPage` is created at `src/LifeGrid.Presentation/Pages/SetupPage.xaml`.
+- **Route:** `setup` (registered in `AppShell.xaml.cs`).
+- **Entry points:**
+  1. App launch: `App.OnStart()` calls `GetOrCreateOnboardingSessionQuery` → navigates to `setup` if `!IsComplete`.
+  2. HUD profile icon tap: `HudView.OnProfileTapped` navigates to `setup`.
+- **Layout (identical shell to Phase 1 pages):**
+  ```
+  ContentPage
+    Grid (RowDefinitions: *, 50)
+      ├── Row 0: ScrollView
+      │     └── VerticalStackLayout (Padding=16, Spacing=16)
+      │           [State A — Unstarted]:
+      │             Label (HeadlineStyle, Text="What's your main goal?")
+      │             Entry (Placeholder="Describe your goal...", Text bound to GoalDraft)
+      │             Button (Text="Next", CornerRadius=2, Command=CompleteStep1Command)
+      │           [State B — Step1_GoalDraftCaptured]:
+      │             Label (HeadlineStyle, Text="Step 1 Complete. Awaiting Phase 3 setup steps.")
+      └── Row 1: AdBannerView
+  ```
+- **State A / State B** toggled via `IsVisible` bindings on two separate layout panels.
+
+## P2.9 Auto-Save Behavior
+- `SetupViewModel` uses a debounce mechanism (500 ms) on the `GoalDraft` property setter.
+- On each `GoalDraft` change: previous pending save is cancelled; a new 500 ms `CancellationTokenSource`-based delay is started.
+- After the 500 ms delay fires, `UpdateGoalDraftCommand` is dispatched via MediatR.
+- "Next" tap also triggers an immediate save before advancing state (no waiting for debounce).
+
+## P2.10 Phase 2 Constraints
+- `OnboardingSession.IsComplete` is permanently `false` in Phase 2 — no code path sets it to `true`.
+- The app has no escape route to the main shell tabs. This is by design: Phase 3 will complete the onboarding sequence.
+- No `#if DEBUG` bypass button is added.
+
+## P2.11 Acceptance Criteria
+- `dotnet build LifeGrid.slnx` exits with 0 errors, 0 warnings.
+- `dotnet test` exits with all tests passing (100% branch coverage on new Domain/Application/Infrastructure code).
+- Cold start with empty DB: app navigates directly to `SetupPage` with empty input field and "Next" button visible.
+- Typing in the input field: DB record is updated 500 ms after last keystroke (verifiable via test).
+- Tapping "Next": `CurrentStep` transitions to `Step1_GoalDraftCaptured`; UI replaces input/button with "Step 1 Complete. Awaiting Phase 3 setup steps."
+- All four bottom tabs are visually disabled on all screens.
+- Tapping HUD profile icon navigates to `SetupPage`.
+- Second cold start: existing session loaded, field pre-populated if draft was saved.
+
+## P2.12 As-Built Outcome (2026-06-17)
+
+All acceptance criteria met. `dotnet build LifeGrid.slnx` → **Build succeeded. 0 Error(s). 0 Warning(s).** `dotnet test` → **24 tests passed.**
+
+### Corrections vs. Plan
+
+| Item | Planned | As Built |
+|---|---|---|
+| `App.xaml.cs` base class | `public partial class App : Application` | `public partial class App` — omit base class in code-behind; XAML SourceGen generates the `: Application` declaration in its partial. Adding `using LifeGrid.Application...` made `Application` ambiguous. |
+| `App.xaml.cs` constructor | `App(AppShell shell, IMediator mediator)` | `App(IServiceProvider services, IMediator mediator)` — `AppShell` resolved lazily in `CreateWindow()` instead. DI created `AppShell` before `App.InitializeComponent()` ran, causing `XamlParseException: StaticResource not found for key Surface` at launch because resource dictionaries were not yet loaded. |
+| `MauiProgram.cs` | `db.Database.Migrate()` | Required `using Microsoft.EntityFrameworkCore;` — `Migrate()` is an extension method in that namespace; omitting it causes `CS1061`. |
+| HUD profile icon active state | Not in original plan | Added post-build (user request): `AppShellViewModel.IsProfileActive` bool property; `DataTrigger` in `HudView.xaml` switches icon `TextColor` to `Primary` when true; `SetupPage.OnAppearing/OnDisappearing` toggle the flag. |
+| SetupPage headline text | `"What's your main goal?"` | `"Tell us about your goal."` (user request post-build). |
+
+### Test Counts by Layer
+
+| Layer | Tests | Result |
+|---|---|---|
+| Domain | 11 | All passed |
+| Application | 6 | All passed |
+| Infrastructure | 4 | All passed |
+| Pre-existing stubs | 3 | All passed |
+| **Total** | **24** | **All passed** |

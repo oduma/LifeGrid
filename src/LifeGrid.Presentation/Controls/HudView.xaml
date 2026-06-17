@@ -11,12 +11,19 @@
         Padding="16,0"
         VerticalOptions="Center">
 
-        <!-- Left: Profile / Setup icon -->
+        <!-- Left: Profile / Setup icon — Primary when setup page is active -->
         <Label
             Grid.Column="0"
             Text="&#xE853;"
             Style="{StaticResource IconStyle}"
             VerticalOptions="Center">
+            <Label.Triggers>
+                <DataTrigger TargetType="Label"
+                             Binding="{Binding IsProfileActive}"
+                             Value="True">
+                    <Setter Property="TextColor" Value="{StaticResource Primary}" />
+                </DataTrigger>
+            </Label.Triggers>
             <Label.GestureRecognizers>
                 <TapGestureRecognizer Tapped="OnProfileTapped" />
             </Label.GestureRecognizers>

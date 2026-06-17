@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:controls="clr-namespace:LifeGrid.Presentation.Controls"
+    x:Class="LifeGrid.Presentation.Pages.SetupPage"
+    Title="Profile Setup"
+    BackgroundColor="{StaticResource Background}">
+
+    <Grid RowDefinitions="*,Auto">
+
+        <ScrollView Grid.Row="0">
+            <VerticalStackLayout
+                Padding="16"
+                Spacing="16"
+                VerticalOptions="Center">
+
+                <!-- State A: Unstarted — show input + Next -->
+                <VerticalStackLayout
+                    IsVisible="{Binding IsStep1Complete, Converter={StaticResource InverseBool}}"
+                    Spacing="16">
+                    <Label
+                        Text="Tell us about your goal."
+                        Style="{StaticResource HeadlineStyle}" />
+                    <Entry
+                        Text="{Binding GoalDraft}"
+                        Placeholder="Describe your goal..." />
+                    <Button
+                        Text="Next"
+                        Command="{Binding CompleteStep1Command}" />
+                </VerticalStackLayout>
+
+                <!-- State B: Step1_GoalDraftCaptured — show completion message -->
+                <Label
+                    IsVisible="{Binding IsStep1Complete}"
+                    Text="Step 1 Complete. Awaiting Phase 3 setup steps."
+                    Style="{StaticResource HeadlineStyle}" />
+
+            </VerticalStackLayout>
+        </ScrollView>
+
+        <controls:AdBannerView Grid.Row="1" />
+
+    </Grid>
+
+</ContentPage>
