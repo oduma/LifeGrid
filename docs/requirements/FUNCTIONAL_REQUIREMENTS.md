@@ -442,4 +442,260 @@ All acceptance criteria met. `dotnet build LifeGrid.slnx` → **Build succeeded.
 | Application | 7 | All passed |
 | Infrastructure | 9 | All passed (5 existing + 4 new) |
 | **Total** | **28** | **All passed** |
+
+---
+
+# Phase 4 — Production Schema & Domain Aggregate Initializer
+
+**Requirements Source:** `docs/requirements/Phase-4-requirements.md`  
+**Implementation Plan:** `docs/plans/phase-4-domain-aggregates-and-schema.md`
+
+---
+
+## P4.1 Key Decisions (from clarifications)
+
+| Decision | Choice |
+|---|---|
+| ID types | `Guid` for all PKs and FKs (consistent with `OnboardingSession.SessionId`) |
+| Badge/BadHabit storage | Owned entity tables — each collection is a separate SQL table with FK to owner |
+| Economy & ActiveStates storage | Separate SQL tables (EF Core `OwnsOne().ToTable()` pattern), linked to `UserProfile` via shared PK |
+| UserProfile cardinality | Single-user — exactly one `UserProfile` row per device |
+| Startup check | Verify UserProfile exists at app start; create default if absent (before onboarding check) |
+| OnboardingProgressCache FK | Add nullable `UserId` column (FK → `UserProfiles`); no data loss; existing rows left as `NULL` |
+
+---
+
+## P4.2 Domain Entity — UserProfile Aggregate Root
+
+Located in `LifeGrid.Domain/UserProfile/`.
+
+**`UserProfile`** (aggregate root):
+- `UserId: Guid` — PK, generated via `Guid.NewGuid()` in `Create()` factory
+- `CurrentLevel: int` — default `1`
+- `Economy: UserEconomy` — owned value object; never null after `Create()`
+- `ActiveStates: UserActiveStates` — owned value object; never null after `Create()`
+- `Badges: IReadOnlyCollection<UserBadge>` — owned collection; empty on creation
+
+**`UserEconomy`** (owned, separate table `UserEconomy`):
+- `LifetimeGpAverage: double` — default `0.0`
+- `LifetimeXp: int` — default `0`
+- `CurrentSp: int` — default `0` (range 0–29; enforced by gamification engine in future phases)
+- `ShieldsAvailable: int` — default `0` (range 0–3)
+- `MaxShieldCap: int` — default `2` (allowed values: 2 or 3)
+
+**`UserActiveStates`** (owned, separate table `UserActiveStates`):
+- `DoubleXpMode: bool` — default `false`
+- `DoubleXpExpiry: DateTime` — default `DateTime.MinValue`
+
+**`UserBadge`** (owned collection entity, separate table `UserBadges`):
+- `BadgeId: Guid` — PK
+- `BadgeType: string` — max 100 chars (e.g., `Showing_Up_Gold`, `Momentum_Overachiever`)
+- `Description: string` — max 2000 chars
+- `DateEarned: DateTime`
+
+**Strict DDD Constraints:**
+- All classes use private parameterless constructor (for EF Core) + static `Create()` factory.
+- All properties use `private set` (no public mutation; domain methods handle state changes).
+- No EF Core attributes, annotations, or infrastructure dependencies in any Domain file.
+
+---
+
+## P4.3 Domain Entity — Goal Aggregate Root
+
+Located in `LifeGrid.Domain/Goal/`.
+
+**`Goal`** (aggregate root):
+- `GoalId: Guid` — PK
+- `UserId: Guid` — FK to `UserProfile` (no navigation property; ID-only cross-aggregate reference)
+- `Description: string` — max 2000 chars
+- `AmbientTag: string` — max 100 chars
+- `Duration: string` — max 50 chars (textual, e.g., "6 months")
+- `DeadlineDate: DateTime`
+- `Status: GoalStatus` — enum; default `Active`; stored as `string` in DB
+- `LinkedBadHabits: IReadOnlyCollection<LinkedBadHabit>` — owned collection; empty on creation
+
+**`GoalStatus`** (enum):
+```
+Active | Overwhelmed | Abandoned | Completed
+```
+
+**`LinkedBadHabit`** (owned collection entity, separate table `GoalLinkedBadHabits`):
+- `BadHabitId: Guid` — PK
+- `Description: string` — max 2000 chars
+- `DangerLevel: int` — range 1–5 (stored as int; validation enforced in future phases)
+
+---
+
+## P4.4 Domain Entity — OnboardingSession Modification
+
+**Add to existing `OnboardingSession`:**
+- `UserId: Guid?` — nullable; null until a UserProfile is linked; private setter
+- `LinkToUser(Guid userId)` — public domain method that sets `UserId`; idempotent
+
+**No structural change** to existing properties (`SessionId`, `CurrentStep`, `IsComplete`, `RawGoalDraft`, `LastActiveTimestamp`).
+
+---
+
+## P4.5 Infrastructure — DbContext Expansion
+
+Add to `LifeGridDbContext`:
+```csharp
+public DbSet<UserProfile> UserProfiles => Set<UserProfile>();
+public DbSet<Goal> Goals => Set<Goal>();
+```
+
+`ApplyConfigurationsFromAssembly` already in place — no other DbContext changes needed.
+
+---
+
+## P4.6 Infrastructure — Fluent API Configurations
+
+### UserProfileConfiguration
+
+Table mapping summary:
+
+| Type | Table | Notes |
+|---|---|---|
+| `UserProfile` | `UserProfiles` | PK = `UserId` |
+| `UserEconomy` | `UserEconomy` | Shared PK = `UserId` (EF `OwnsOne().ToTable()`) |
+| `UserActiveStates` | `UserActiveStates` | Shared PK = `UserId` (EF `OwnsOne().ToTable()`) |
+| `UserBadge` | `UserBadges` | PK = `BadgeId`; FK = `UserId` → `UserProfiles` |
+
+### GoalConfiguration
+
+Table mapping summary:
+
+| Type | Table | Notes |
+|---|---|---|
+| `Goal` | `Goals` | PK = `GoalId`; FK `UserId` → `UserProfiles` (no nav prop, `SetNull` on delete) |
+| `LinkedBadHabit` | `GoalLinkedBadHabits` | PK = `BadHabitId`; FK = `GoalId` → `Goals` |
+| `Goal.Status` | `Goals.Status` | Stored as `string`, max 50 chars |
+
+### OnboardingSessionConfiguration change
+
+Add nullable FK column:
+```
+UserId: Guid? — nullable FK → UserProfiles; DELETE = SetNull
+```
+
+---
+
+## P4.7 Infrastructure — Schema Migration
+
+Generate via EF CLI (never manually authored):
+```
+dotnet ef migrations add AddUserProfileAndGoalSchema --project src/LifeGrid.Infrastructure
+```
+
+**Migration must:**
+- Create `UserProfiles`, `UserEconomy`, `UserActiveStates`, `UserBadges`, `Goals`, `GoalLinkedBadHabits` tables.
+- Add nullable `UserId TEXT` column to `OnboardingProgressCache`.
+- Add FK constraint from `OnboardingProgressCache.UserId` → `UserProfiles.UserId`.
+- **Not** drop, rename, or alter any existing column in `OnboardingProgressCache`.
+
+**Startup application** (already wired in `MauiProgram.cs` per TECHNICAL_STANDARDS.md):
+`context.Database.Migrate()` runs all pending migrations on first post-Phase-4 launch.
+
+---
+
+## P4.8 Application Layer — Repository Interface & Query
+
+### `IUserProfileRepository` (in `Application/UserProfile/`)
+```
+GetSingleAsync(ct) → Task<UserProfile?>
+AddAsync(UserProfile, ct) → Task
+```
+
+### `GetOrCreateUserProfileQuery` (in `Application/UserProfile/Queries/`)
+- `IRequest<Result<UserProfile>>`
+- Handler logic:
+  1. Call `GetSingleAsync()`.
+  2. If profile exists → return `Result<UserProfile>.Success(profile)`.
+  3. If null → create `UserProfile.Create()`, call `AddAsync()`, return success.
+
+---
+
+## P4.9 Presentation — Startup Integration
+
+**Modify `App.OnStart()` execution order:**
+1. `_credentialSync.SyncAsync()` (Phase 3 — unchanged)
+2. `_mediator.Send(new GetOrCreateUserProfileQuery())` ← **new Phase 4 step**
+3. `_mediator.Send(new GetOrCreateOnboardingSessionQuery())` (Phase 2 — unchanged)
+4. Navigate to `"setup"` if onboarding incomplete
+
+`App` constructor gains `IMediator` already injected; no new constructor parameters needed beyond what Phase 3 added.
+
+---
+
+## P4.10 TDD — Domain Unit Tests
+
+Located in `tests/LifeGrid.Domain.Tests/`.
+
+**UserProfile tests** (8 tests):
+| Test | Assert |
+|---|---|
+| `Create_GeneratesNonEmptyGuid` | `UserId != Guid.Empty` |
+| `Create_SetsLevelToOne` | `CurrentLevel == 1` |
+| `Create_Economy_DefaultsToZero` | `LifetimeXp == 0`, `CurrentSp == 0`, `ShieldsAvailable == 0` |
+| `Create_Economy_MaxShieldCapIsTwo` | `MaxShieldCap == 2` |
+| `Create_ActiveStates_DoubleXpModeIsFalse` | `DoubleXpMode == false` |
+| `Create_HasEmptyBadgesCollection` | `Badges.Count == 0` |
+| `Create_TwoProfiles_HaveDifferentIds` | `a.UserId != b.UserId` |
+
+**Goal tests** (3 tests):
+| Test | Assert |
+|---|---|
+| `Create_SetsStatusToActive` | `Status == GoalStatus.Active` |
+| `Create_HasEmptyLinkedBadHabitsCollection` | `LinkedBadHabits.Count == 0` |
+| `Create_GeneratesNonEmptyGoalId` | `GoalId != Guid.Empty` |
+
+**OnboardingSession tests** (1 test added to existing suite):
+| Test | Assert |
+|---|---|
+| `LinkToUser_SetsUserId` | After `LinkToUser(guid)`, `UserId == guid` |
+
+---
+
+## P4.11 TDD — Infrastructure Integration Tests
+
+Located in `tests/LifeGrid.Infrastructure.Tests/`. Use real SQLite `:memory:` provider with `context.Database.Migrate()` (not `EnsureCreated()`).
+
+**Schema tests** (6 tests):
+| Test | Assert |
+|---|---|
+| `UserProfile_CanBeWrittenAndReadBack` | Written `UserProfile` round-trips with correct `UserId` and `CurrentLevel` |
+| `UserProfile_Economy_PersistedInSeparateTable` | `Economy.LifetimeXp` and `MaxShieldCap` survive write/read |
+| `UserProfile_Badges_CanBeWrittenAndReadBack` | `UserBadge` with known `BadgeId` round-trips; `Badges.Count == 1` |
+| `Goal_CanBeWrittenAndReadBack` | `Goal` with `Status == Active` round-trips correctly |
+| `Goal_LinkedBadHabit_CanBeWrittenAndReadBack` | `LinkedBadHabit` round-trips with correct `DangerLevel` |
+| `OnboardingProgressCache_Preserved_WithNewUserIdColumn` | Existing table survives migration; `UserId` column exists and is nullable |
+
+---
+
+## P4.12 Acceptance Criteria
+
+- `dotnet build LifeGrid.slnx` → 0 errors, 0 warnings.
+- `dotnet test` → all existing 28 tests still pass + ≥14 new tests green.
+- First app launch (clean device): one `UserProfile` row created; `GetOrCreateUserProfileQuery` returns it on next launch without creating a second row.
+- `OnboardingProgressCache` table survives the migration with all existing rows intact; new `UserId` column is `NULL` for old rows.
+- EF Core model validates that `UserEconomy` and `UserActiveStates` live in their own tables (confirmed via migration scaffold inspection).
+
+## P4.13 As-Built Outcome (2026-06-17)
+
+All acceptance criteria met. `dotnet build LifeGrid.slnx` → **Build succeeded. 0 Error(s). 0 Warning(s).** `dotnet test` → **46 tests passed.**
+
+### Corrections vs. Plan
+
+| Item | Planned | As Built |
+|---|---|---|
+| Test file type aliases | Not anticipated | Any test file whose folder/namespace segment matches a domain type name causes the C# compiler to resolve the short name as a namespace segment rather than a type (CS0118 / CS0234). Affected files: `UserProfileTests.cs` (namespace `LifeGrid.Domain.Tests.UserProfile`) and `GoalTests.cs` (namespace `LifeGrid.Domain.Tests.Goal`). Fixed by declaring type aliases at the top of each affected file: `using UserProfileEntity = LifeGrid.Domain.UserProfile.UserProfile;` and `using GoalAggregate = LifeGrid.Domain.Goal.Goal;`. This pattern must be applied to any future test file in a namespace whose final segment matches its domain type. |
+
+### Test Counts by Layer
+
+| Layer | Tests | Result |
+|---|---|---|
+| Domain | 23 (12 existing + 11 new) | All passed |
+| Application | 7 | All passed |
+| Infrastructure | 16 (9 existing + 7 new) | All passed |
+| **Total** | **46** | **All passed** |
 - Running `scripts\setup-dev-secrets.ps1` on a clean machine produces a passing build end-to-end.

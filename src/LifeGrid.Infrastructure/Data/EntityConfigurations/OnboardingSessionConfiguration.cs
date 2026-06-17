@@ -1,4 +1,5 @@
 using LifeGrid.Domain.Onboarding;
+using LifeGrid.Domain.UserProfile;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -17,5 +18,11 @@ public sealed class OnboardingSessionConfiguration : IEntityTypeConfiguration<On
         builder.Property(e => e.RawGoalDraft).HasMaxLength(2000);
         builder.Property(e => e.IsComplete);
         builder.Property(e => e.LastActiveTimestamp);
+        builder.Property(e => e.UserId);
+        builder.HasOne<UserProfile>()
+               .WithMany()
+               .HasForeignKey(e => e.UserId)
+               .IsRequired(false)
+               .OnDelete(DeleteBehavior.SetNull);
     }
 }

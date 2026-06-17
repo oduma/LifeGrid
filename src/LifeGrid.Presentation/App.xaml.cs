@@ -1,4 +1,5 @@
 using LifeGrid.Application.Onboarding.Queries;
+using LifeGrid.Application.UserProfile.Queries;
 using LifeGrid.Infrastructure.Security;
 using MediatR;
 using Microsoft.Extensions.DependencyInjection;
@@ -28,6 +29,7 @@ public partial class App
     {
         base.OnStart();
         await _credentialSync.SyncAsync();
+        await _mediator.Send(new GetOrCreateUserProfileQuery());
         var result = await _mediator.Send(new GetOrCreateOnboardingSessionQuery());
         if (result.IsSuccess && !result.Value!.IsComplete)
             await Shell.Current.GoToAsync("setup");

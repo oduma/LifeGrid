@@ -1,4 +1,5 @@
 using LifeGrid.Application.Onboarding;
+using LifeGrid.Application.UserProfile;
 using LifeGrid.Infrastructure.Data;
 using LifeGrid.Infrastructure.Data.Repositories;
 using LifeGrid.Infrastructure.Security;
@@ -16,6 +17,7 @@ public static class InfrastructureServiceExtensions
         services.AddDbContext<LifeGridDbContext>(opts =>
             opts.UseSqlite(connectionString));
         services.AddScoped<IOnboardingRepository, OnboardingRepository>();
+        services.AddScoped<IUserProfileRepository, UserProfileRepository>();
 
         services.AddSingleton<ISecureStorageService, SecureStorageService>();
         services.AddSingleton<IBuildSecretProvider, BuildSecretProvider>();

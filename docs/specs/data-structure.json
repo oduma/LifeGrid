@@ -1,6 +1,6 @@
 {
   "User_Profile": {
-    "UserID": "String",
+    "UserID": "Guid",
     "Current_Level": "Integer",
     "Economy": {
       "Lifetime_GP_Average": "Float // Global average progression across all goals",
@@ -15,7 +15,7 @@
     },
     "Trophy_Room_Badges": [
       {
-        "BadgeID": "String",
+        "BadgeID": "Guid",
         "Badge_Type": "String (e.g., Showing_Up_Gold, Momentum_Overachiever)",
         "Description": "String",
         "Date_Earned": "DateTime"
@@ -24,8 +24,8 @@
   },
 
   "Goal": {
-    "GoalID": "String",
-    "UserID": "String",
+    "GoalID": "Guid",
+    "UserID": "Guid // FK to User_Profile",
     "Description": "String",
     "Ambient_Tag": "String",
     "Duration": "String // Textual representation (e.g., '6 months')",
@@ -33,15 +33,24 @@
     "Status": "String (Active, Overwhelmed, Abandoned, Completed)",
     "Linked_Bad_Habits": [
       {
-        "BadHabitID": "String",
+        "BadHabitID": "Guid",
         "Description": "String",
         "Danger_Level": "Integer (1-5)"
       }
     ]
   },
 
+  "OnboardingProgressCache": {
+    "SessionID": "Guid",
+    "UserID": "Guid? // Nullable FK to User_Profile; NULL until UserProfile is created",
+    "Current_Step": "String (Unstarted, Step1_GoalDraftCaptured)",
+    "Is_Complete": "Boolean",
+    "Raw_Goal_Draft": "String (Nullable)",
+    "Last_Active_Timestamp": "DateTime"
+  },
+
   "Week": {
-    "WeekID": "String",
+    "WeekID": "Guid",
     "Week_Number": "Integer",
     "Start_Date": "DateTime",
     "Status": "String (Active, Hibernated, Frozen)",
@@ -50,8 +59,8 @@
     },
     "Week_Goal_Items": [
       {
-        "Week_GoalID": "String // Primary Key for this junction record",
-        "GoalID": "String // Foreign Key to the Goal",
+        "Week_GoalID": "Guid // Primary Key for this junction record",
+        "GoalID": "Guid // FK to Goal",
         "Penalty_State": "String (Clean, Level_1_Warning, Probation_Week_2, Reckoning_Week_3)",
         "Metrics": {
           "Goal_Weekly_GP": "Float // The strict evaluation metric for THIS specific goal",
@@ -62,8 +71,8 @@
   },
 
   "Habit": {
-    "HabitID": "String",
-    "Week_GoalID": "String // Foreign Key linking directly to the specific Goal's week state",
+    "HabitID": "Guid",
+    "Week_GoalID": "Guid // FK linking directly to the specific Goal's week state",
     "Habit_Type": "String (Planned, Moment Burst, Flash)",
     "Habit_Name": "String",
     "Habit_Description": "String",
@@ -74,7 +83,7 @@
     },
     "Completed_Values_Log": [
       {
-        "LogID": "String",
+        "LogID": "Guid",
         "Actual_Value": "Float",
         "Measurement_Unit": "String",
         "Proof_Text": "String (Nullable)",

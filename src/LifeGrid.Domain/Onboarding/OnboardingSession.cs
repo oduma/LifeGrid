@@ -30,4 +30,8 @@ public sealed class OnboardingSession
         CurrentStep         = OnboardingStep.Step1_GoalDraftCaptured;
         LastActiveTimestamp = DateTime.UtcNow;
     }
+
+    public Guid? UserId { get; private set; }
+
+    public void LinkToUser(Guid userId) => UserId = userId;
 }

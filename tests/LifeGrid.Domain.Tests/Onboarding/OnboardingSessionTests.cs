@@ -90,4 +90,13 @@ public sealed class OnboardingSessionTests
         session.AdvanceToStep1();
         session.LastActiveTimestamp.Should().BeOnOrAfter(before);
     }
+
+    [Fact]
+    public void LinkToUser_SetsUserId()
+    {
+        var session = OnboardingSession.Create();
+        var userId  = Guid.NewGuid();
+        session.LinkToUser(userId);
+        session.UserId.Should().Be(userId);
+    }
 }
