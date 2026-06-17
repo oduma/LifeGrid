@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    x:Class="LifeGrid.Presentation.Controls.HudView"
+    BackgroundColor="{StaticResource Surface}"
+    HeightRequest="{StaticResource HudHeight}">
+
+    <Grid
+        ColumnDefinitions="Auto,*,Auto"
+        Padding="16,0"
+        VerticalOptions="Center">
+
+        <!-- Left: Profile / Setup icon -->
+        <Label
+            Grid.Column="0"
+            Text="&#xE853;"
+            Style="{StaticResource IconStyle}"
+            VerticalOptions="Center">
+            <Label.GestureRecognizers>
+                <TapGestureRecognizer Tapped="OnProfileTapped" />
+            </Label.GestureRecognizers>
+        </Label>
+
+        <!-- Center: Uninitialized — Phase 1 placeholder -->
+        <ContentView Grid.Column="1" />
+
+        <!-- Right: Notifications icon -->
+        <Label
+            Grid.Column="2"
+            Text="&#xE7F4;"
+            Style="{StaticResource IconStyle}"
+            VerticalOptions="Center">
+            <Label.GestureRecognizers>
+                <TapGestureRecognizer Tapped="OnNotificationsTapped" />
+            </Label.GestureRecognizers>
+        </Label>
+
+    </Grid>
+
+</ContentView>

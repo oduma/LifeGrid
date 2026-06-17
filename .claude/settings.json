@@ -3,7 +3,10 @@
     "allow": [
       "PowerShell(Get-ChildItem -Path \"c:\\\\Code\\\\LifeGrid\" -Depth 2 | Where-Object { $_.Name -notmatch \"^\\\\.git|^docs|^\\\\.claude\" } | Select-Object FullName, PSIsContainer)",
       "PowerShell(New-Item -ItemType Directory -Force \"c:\\\\Code\\\\LifeGrid\\\\docs\\\\requirements\")",
-      "PowerShell(New-Item -ItemType Directory -Force \"c:\\\\Code\\\\LifeGrid\\\\docs\\\\plans\")"
+      "PowerShell(New-Item -ItemType Directory -Force \"c:\\\\Code\\\\LifeGrid\\\\docs\\\\plans\")",
+      "PowerShell(Add-Type -AssemblyName System.IO.Compression.FileSystem; $zip = [System.IO.Compression.ZipFile]::OpenRead\\(\"C:\\\\Code\\\\LifeGrid\\\\z-ai-com\\\\IconKitchen-Output.zip\"\\); $zip.Entries | Select-Object FullName | Format-Table -AutoSize; $zip.Dispose\\(\\))",
+      "WebFetch(domain:fonts.google.com)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ]
   }
 }

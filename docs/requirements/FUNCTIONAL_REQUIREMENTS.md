@@ -99,3 +99,116 @@ Infrastructure ──►  Application  ──►  Domain
 
 ## 7. As-Built Outcome (2026-06-16)
 All acceptance criteria met. `dotnet build LifeGrid.slnx` → **Build succeeded. 0 Error(s). 0 Warning(s).** Time elapsed 00:01:43.
+
+---
+
+# Phase 1 — UI Shell Requirements
+
+**Source:** `docs/requirements/Phase-1-requirements.md`  
+**Design authority refs:** `docs/specs/style-guide.md`, `docs/specs/screen-layout-specification.md`, `docs/specs/navigation-architecture.md`
+
+## P1.1 App Launch Icon
+- The pre-rendered Android launcher icon assets in `z-ai-com/IconKitchen-Output.zip` must be extracted and placed into `src/LifeGrid.Presentation/Platforms/Android/Resources/` preserving the `mipmap-mdpi`, `mipmap-hdpi`, `mipmap-xhdpi`, `mipmap-xxhdpi`, `mipmap-xxxhdpi`, and `mipmap-anydpi-v26` density folders.
+- The MAUI SVG-based `<MauiIcon>` entry must be removed from `LifeGrid.Presentation.csproj` to avoid conflict with the native mipmap resources.
+- `AndroidManifest.xml` must reference `@mipmap/ic_launcher`.
+
+## P1.2 Typography & Font Assets
+- **DM Mono** (Regular, Medium, Italic) `.ttf` files downloaded from Google Fonts and embedded in `Resources/Fonts/`. Used for all display, headline, and title text (M3 large styles).
+- **Share Tech Mono** (Regular) `.ttf` downloaded from Google Fonts and embedded. Used for all body, label, button, and subtitle text (M3 small styles).
+- **Material Symbols Rounded** variable `.ttf` downloaded from Google's Material Symbols repository and embedded. Used for all UI icons via Unicode codepoints.
+- Default `OpenSans-Regular.ttf` and `OpenSans-Semibold.ttf` must be removed from the project.
+- All three font families must be registered in `MauiProgram.cs` via `ConfigureFonts`.
+
+## P1.3 Global Design Tokens (Color)
+Tokens map 1:1 to Material Design 3 semantic roles per `docs/specs/style-guide.md`:
+
+| Token Name | Hex | M3 Role |
+|---|---|---|
+| Primary | `#35f8db` | Prominent buttons, active states, highlights |
+| OnPrimary | `#58585a` | Text/icons on Primary |
+| Secondary | `#e5cde1` | Subtle accents, selection controls |
+| OnSecondary | `#a20ba0` | Text/icons on Secondary |
+| Background | `#fbfbfe` | Main app background |
+| Surface | `#ffffff` | Cards, dialogs, bottom sheets |
+| OnSurface | `#58585a` | Standard body text, default icons |
+| Error | `#FF1B77` | Validation failures, destructive actions |
+
+These must be defined as named `Color` resources in `Resources/Styles/Colors.xaml`.
+
+## P1.4 Navigation Architecture (MAUI Shell + TabBar)
+- Navigation is implemented via `AppShell.xaml` using MAUI `Shell` with a `TabBar`.
+- **Tab nodes (4 destinations):**
+
+| Tab | Label | Material Symbols Codepoint | Route |
+|---|---|---|---|
+| 1 | Home | `` (home) | `HomePage` |
+| 2 | Timeline | `` (view_timeline) | `TimelinePage` |
+| 3 | Goals | `` (track_changes) | `GoalsPage` |
+| 4 | Vault | `` (military_tech) | `VaultPage` |
+
+- Tab icons rendered via `FontImageSource` referencing the embedded Material Symbols Rounded font.
+- **Interaction Law (Phase 1):** All tab changes are passive (Shell handles switching between static placeholder pages). No business logic or state mutation is triggered.
+
+## P1.5 Global HUD (Top Bar)
+- Implemented as a `HudView` custom `ContentView`, wired as `Shell.TitleView`.
+- **Height:** ~85dp (fixed compact).
+- **Layout:** 3-column `Grid` (Auto | * | Auto):
+  - Left: `AccountCircle` icon — Material Symbols ``, color OnSurface, TapGestureRecognizer wired to a no-op handler.
+  - Center: Empty container (Phase 1 uninitialized state — no metrics, no badges).
+  - Right: `Notifications` icon — Material Symbols ``, color OnSurface, TapGestureRecognizer wired to a no-op handler.
+- Background: Surface (`#ffffff`).
+
+## P1.6 Main Interaction Area
+- Each of the 4 placeholder `ContentPage` files hosts a `ScrollView` that consumes all remaining vertical space (`weight(1f)` equivalent — `RowDefinition Height="*"`).
+- **Content:** A single `Label` with literal text `"Placeholder Text"` centered both vertically and horizontally.
+- Font: Share Tech Mono. Color: OnSurface.
+
+## P1.7 Advertising Banner
+- An `AdBannerView` custom `ContentView` anchored at the bottom of each placeholder page's content area, immediately above the Shell TabBar.
+- **Height:** Strict `50dp`.
+- **Content:** Single center-aligned `Label` with literal text `"Ads Area"`. Font: Share Tech Mono. Color: OnSurface.
+- Background: Surface. Corner radius: 2px per global shape override.
+
+## P1.8 Light Mode Lock
+- The application must enforce Light Mode unconditionally. No system dark-mode inversion. Implement via `RequestedTheme = AppTheme.Light` or equivalent MAUI application-level setting.
+
+## P1.9 Spacing & Shape Globals
+- All interactive/structural components use `2px` corner radius globally.
+- Screen content horizontal margin: `16dp`.
+- Standard item spacing: `8dp`. Section spacing: `16–24dp`.
+
+## P1.10 Acceptance Criteria
+- `dotnet build LifeGrid.slnx` exits with 0 errors, 0 warnings.
+- App renders on Android emulator/device with correct 4-tab Shell layout.
+- Top HUD shows AccountCircle (left) and Notifications (right) icons; center is empty.
+- Bottom tab bar shows Home / Timeline / Goals / Vault with correct Material Symbols glyphs.
+- 50dp ad banner appears above the tab bar on all 4 tabs.
+- Tapping any icon or tab produces no crashes, no navigation side effects.
+- Custom fonts visually confirmed in all text elements.
+
+## P1.11 As-Built Outcome (2026-06-17)
+
+All acceptance criteria met. `dotnet build LifeGrid.slnx` → **Build succeeded. 0 Error(s). 0 Warning(s).**
+
+### Corrections vs. Plan
+
+| Item | Planned | As Built |
+|---|---|---|
+| HUD padding | `Padding="{StaticResource ScreenMargin},0"` | `Padding="16,0"` — XAML SourceGen does not allow a `StaticResource` embedded inside a comma-separated `Thickness` literal |
+| MauiProgram.cs | `UseSkiaSharp()` call only | Required `using SkiaSharp.Views.Maui.Controls.Hosting;` — namespace not added by the template; omitting it causes `CS1061` |
+| Font download | Google Fonts `/download` ZIP API | API returned HTML instead of a ZIP. Fix: fetch the CSS API (`fonts.googleapis.com/css2`) with a browser `User-Agent`, parse `src: url(...)` declarations to extract `fonts.gstatic.com` CDN URLs, download those directly |
+| Material Symbols font filename | `MaterialSymbolsRounded[FILL,GRAD,opsz,wght].ttf` | Stored as `MaterialSymbolsRounded.ttf`; registered alias is `"MaterialSymbolsRounded"` |
+| Shell.NavBarIsVisible | Set to `"False"` at Shell level | Left at default — `Shell.TitleView` renders the HUD natively without hiding the nav bar; no flickering observed |
+| Timeline tab icon | `view_timeline` U+E9A7 | Changed to `clock_arrow_down` U+F382 (user request post-build) |
+| Vault tab icon | `military_tech` U+EA0E | Changed to `social_leaderboard` U+F6A0 (user request post-build) |
+
+### Final Tab Icon Codepoint Reference
+
+| Tab | Icon Name | Codepoint | Source |
+|---|---|---|---|
+| Home | `home` | `&#xE88A;` | Material Symbols Rounded |
+| Timeline | `clock_arrow_down` | `&#xF382;` | Material Symbols Rounded |
+| Goals | `track_changes` | `&#xE8D0;` | Material Symbols Rounded |
+| Vault | `social_leaderboard` | `&#xF6A0;` | Material Symbols Rounded |
+| HUD left | `account_circle` | `&#xE853;` | Material Symbols Rounded |
+| HUD right | `notifications` | `&#xE7F4;` | Material Symbols Rounded |

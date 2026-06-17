@@ -1,14 +1,70 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <Shell
-    x:Class="LifeGrid.Presentation.AppShell"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-    xmlns:local="clr-namespace:LifeGrid.Presentation"
-    Title="LifeGrid.Presentation">
+    xmlns:controls="clr-namespace:LifeGrid.Presentation.Controls"
+    xmlns:pages="clr-namespace:LifeGrid.Presentation.Pages"
+    x:Class="LifeGrid.Presentation.AppShell"
+    Shell.TabBarBackgroundColor="{StaticResource Surface}"
+    Shell.TabBarForegroundColor="{StaticResource Primary}"
+    Shell.TabBarTitleColor="{StaticResource Primary}"
+    Shell.TabBarUnselectedColor="{StaticResource OnSurface}"
+    BackgroundColor="{StaticResource Surface}">
 
-    <ShellContent
-        Title="Home"
-        ContentTemplate="{DataTemplate local:MainPage}"
-        Route="MainPage" />
+    <Shell.TitleView>
+        <controls:HudView />
+    </Shell.TitleView>
+
+    <TabBar>
+
+        <Tab Title="Home">
+            <Tab.Icon>
+                <FontImageSource
+                    FontFamily="MaterialSymbolsRounded"
+                    Glyph="&#xE88A;"
+                    Color="{StaticResource OnSurface}" />
+            </Tab.Icon>
+            <ShellContent
+                ContentTemplate="{DataTemplate pages:HomePage}"
+                Route="home" />
+        </Tab>
+
+        <Tab Title="Timeline">
+            <Tab.Icon>
+                <FontImageSource
+                    FontFamily="MaterialSymbolsRounded"
+                    Glyph="&#xF382;"
+                    Color="{StaticResource OnSurface}" />
+            </Tab.Icon>
+            <ShellContent
+                ContentTemplate="{DataTemplate pages:TimelinePage}"
+                Route="timeline" />
+        </Tab>
+
+        <Tab Title="Goals">
+            <Tab.Icon>
+                <FontImageSource
+                    FontFamily="MaterialSymbolsRounded"
+                    Glyph="&#xE8D0;"
+                    Color="{StaticResource OnSurface}" />
+            </Tab.Icon>
+            <ShellContent
+                ContentTemplate="{DataTemplate pages:GoalsPage}"
+                Route="goals" />
+        </Tab>
+
+        <Tab Title="Vault">
+            <Tab.Icon>
+                <FontImageSource
+                    FontFamily="MaterialSymbolsRounded"
+                    Glyph="&#xF6A0;"
+                    Color="{StaticResource OnSurface}" />
+            </Tab.Icon>
+            <ShellContent
+                ContentTemplate="{DataTemplate pages:VaultPage}"
+                Route="vault" />
+        </Tab>
+
+    </TabBar>
 
 </Shell>
