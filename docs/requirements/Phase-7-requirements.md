@@ -49,13 +49,10 @@ Claude Code must parse visual and layout bounds directly from the master reposit
 * **Component 3: Diagnostics & Progression**
   * Render a standard action button: `"Detect Hidden Vices"`. 
   * **Interaction Law:** Bound to a safe `no-op` state for this phase. Navigation for the Vice Survey will be defined in a future slice.
-* **Component 4: Nuclear Action**
-  * Render a clearly distinct, bottom-anchored button: `"Factory Reset"`. 
-  * Tapping this triggers the Factory Reset Command, clears the database, and forces the application navigation state all the way back to Phase 2 (Step 1 Onboarding / Unstarted).
 
 ---
 
 ## 5. Test-Driven Development (TDD) Invariants
 
 * **Conditional Rendering Verification:** Write a UI/ViewModel unit test asserting that the warning message string is structurally hidden/null when the mocked `Goal` count is `0`, and explicitly visible when `> 0`.
-* **Atomic Wipe Verification:** Write an integration test executing the Factory Reset command against an in-memory SQLite database populated with dummy data. Assert that exactly zero records remain across all domain tables post-execution.
+* **Atomic Wipe Verification:** Write an integration test executing the Reset Goals command against an in-memory SQLite database populated with dummy data. Assert that exactly zero records remain across all domain tables post-execution.

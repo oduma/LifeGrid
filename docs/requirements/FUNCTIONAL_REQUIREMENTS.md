@@ -1173,3 +1173,228 @@ New files added for the bug fix: `SaveRefinementAnswersCommand.cs`, `OnboardingS
 | Application | 39 | All passed |
 | Infrastructure | 44 | All passed |
 | **Total** | **137** | **All passed** |
+
+---
+
+## Phase 7: User Setup Hub Evolution & Route Corrections
+
+### P7.1 Goal
+
+Decouple the initial onboarding flow from the permanent user-profile screen. Rename the onboarding UI to "Create Goal", build the persistent **User Setup Hub** accessible via the Global HUD, implement a **Factory Reset** command, and fix the startup tab-bar state for returning users whose first goal already exists.
+
+---
+
+### P7.2 Clarifications (agreed 2026-06-18)
+
+| # | Question | Answer |
+|---|---|---|
+| Q1 | "Reset Goals" vs "Factory Reset" — same or different scope? | Same command. There is only one destructive action; the separate "Factory Reset" Component 4 was removed from requirements. |
+| Q2 | Route naming after rename? | `"setup"` → `"create-goal"` for onboarding page; `"user-setup"` for the new hub. |
+| Q3 | HUD profile icon during onboarding? | No-op — icon is non-tappable while `IsOnboardingComplete = false`. |
+| Q4 | Tab-bar enabling for returning users? | Was expected at end of Phase 6. If not done, add to Phase 7: detect active Goals on startup → `SetOnboardingComplete()` + navigate to Goals page. |
+
+---
+
+### P7.3 Route Renaming
+
+* Rename the existing Phase 2 / Phase 5 onboarding sequence from `SetupPage` / `SetupViewModel` to `CreateGoalPage` / `CreateGoalViewModel`.
+* Update the Shell route registration from `"setup"` to `"create-goal"`.
+* All in-app and startup navigation that previously used `GoToAsync("setup")` must use `GoToAsync("create-goal")`.
+
+---
+
+### P7.4 Startup Goal Detection (Q4 Fix)
+
+* On `App.OnStart()`, after `GetOrCreateUserProfileQuery`:
+  * Send `GetActiveGoalCountQuery`.
+  * If `count > 0`: call `AppShellViewModel.SetOnboardingComplete()` and navigate to `"//goals"` (Goals tab).
+  * Else: send `GetOrCreateOnboardingSessionQuery`; if `!session.IsComplete` navigate to `"create-goal"`.
+* This ensures the tab bar is always enabled for a user who has previously completed onboarding, regardless of process restart.
+
+---
+
+### P7.5 Domain Changes
+
+#### P7.5.1 `OnboardingSession.Reset()`
+* Add a `Reset()` method to `OnboardingSession` that restores the aggregate to its freshly-created state:
+  * `UserId = null`
+  * `CurrentStep = Unstarted`
+  * `IsComplete = false`
+  * `RawGoalDraft = null`
+  * `ValidatedGoalJson = null`
+  * `RefinementQuestionsJson = null`
+  * `RefinementAnswersJson = null`
+  * `LastActiveTimestamp = DateTime.UtcNow`
+
+---
+
+### P7.6 Application Layer
+
+#### P7.6.1 `GetActiveGoalCountQuery`
+* Returns `Result<int>` — the count of `GoalStatus.Active` goals for the current user.
+* Returns `0` (not a failure) when no user profile exists.
+* Requires a new `IGoalRepository.GetActiveCountAsync(Guid userId, CancellationToken)` method.
+
+#### P7.6.2 `IFactoryResetService`
+* Interface declared in the Application layer.
+* Single method: `Task ResetAsync(CancellationToken ct = default)`.
+
+#### P7.6.3 `FactoryResetCommand`
+* MediatR command that delegates entirely to `IFactoryResetService.ResetAsync()`.
+* Returns `Result`.
+
+---
+
+### P7.7 Infrastructure Layer
+
+#### P7.7.1 `FactoryResetService`
+* Implements `IFactoryResetService` using `LifeGridDbContext` directly.
+* Deletes all domain data via `ExecuteSqlRawAsync` in FK-safe order:
+  1. `Habits`
+  2. `WeekGoals`
+  3. `Weeks`
+  4. `GoalRefinementAnswers`
+  5. `GoalLinkedBadHabits`
+  6. `Goals`
+  7. `UserEconomy`
+  8. `UserActiveStates`
+  9. `UserBadges`
+  10. `UserProfiles`
+* Loads the active `OnboardingSession` via `IOnboardingRepository`, calls `session.Reset()`, and upserts it.
+* Registered as `Transient` in the DI extension.
+
+---
+
+### P7.8 Presentation Layer — HUD
+
+#### P7.8.1 Profile Icon Tap Behavior
+* When `AppShellViewModel.IsOnboardingComplete = false`: tap on the profile icon is a **no-op**.
+* When `IsOnboardingComplete = true`: tap navigates to `"user-setup"`.
+* Implementation: `HudView.xaml.cs` checks `BindingContext as AppShellViewModel` before navigating.
+
+---
+
+### P7.9 Presentation Layer — User Setup Hub
+
+#### P7.9.1 `UserSetupViewModel`
+* `HasActiveGoals` (`bool`, `[ObservableProperty]`) — loaded via `GetActiveGoalCountQuery`.
+* `ShowWarning` (`bool`, computed) — `true` when `HasActiveGoals`.
+* `LoadAsync()` fires the query and sets `HasActiveGoals`.
+* Commands:
+  * `EditActiveGoalsCommand` → `Shell.Current.GoToAsync("//goals")`
+  * `ResetGoalsCommand` → sends `FactoryResetCommand`, sets `AppShellViewModel.IsOnboardingComplete = false`, then `GoToAsync("create-goal")`
+  * `DetectHiddenVicesCommand` → **no-op** for this phase
+
+#### P7.9.2 `UserSetupPage`
+* Route: `"user-setup"` (registered in `AppShell`).
+* **Component 1 — Goal Management Block:**
+  * Secondary-styled button: `"Edit Active Goals"` → `EditActiveGoalsCommand`.
+  * Destructive-styled button: `"Reset Goals"` → `ResetGoalsCommand`.
+* **Component 2 — Conditional Warning:**
+  * Bound to `ShowWarning`.
+  * Literal text: `"Warning: Resetting your goals will permanently wipe all current goals, Shield Points, XP, and restart your game from scratch."`
+  * Rendered in `Error` color (`#FFFF1B77` from style guide).
+* **Component 3 — Diagnostics:**
+  * Standard button: `"Detect Hidden Vices"` → `DetectHiddenVicesCommand` (no-op).
+* Layout follows screen-layout-specification: 16dp horizontal padding, 16dp/24dp section spacing.
+
+---
+
+### P7.10 Test-Driven Development
+
+#### Domain Tests (`LifeGrid.Domain.Tests/Onboarding/`)
+| Test | Assert |
+|---|---|
+| `Reset_SetsCurrentStepToUnstarted` | `CurrentStep == Unstarted` |
+| `Reset_ClearsIsComplete` | `IsComplete == false` |
+| `Reset_ClearsUserId` | `UserId == null` |
+| `Reset_ClearsAllStagingFields` | All JSON fields are `null`, `RawGoalDraft` is `null` |
+| `Reset_UpdatesLastActiveTimestamp` | `LastActiveTimestamp` changes |
+
+#### Application Tests (`LifeGrid.Application.Tests/Goal/`)
+| Test | Assert |
+|---|---|
+| `GetActiveGoalCountQuery_NoProfile_ReturnsZero` | `result.Value == 0` |
+| `GetActiveGoalCountQuery_NoActiveGoals_ReturnsZero` | Repo returns empty; `result.Value == 0` |
+| `GetActiveGoalCountQuery_HasActiveGoals_ReturnsCount` | Repo returns 2 active goals; `result.Value == 2` |
+| `FactoryResetCommand_DelegatesTo_IFactoryResetService` | `factoryResetService.ResetAsync()` called once |
+| `FactoryResetCommand_ReturnsSuccess` | `result.IsSuccess == true` |
+
+#### Presentation Tests (`LifeGrid.Presentation.Tests/ViewModels/` — new test project **not** required; use Application.Tests)
+| Test | Assert |
+|---|---|
+| `UserSetupViewModel_NoActiveGoals_ShowWarningIsFalse` | `ShowWarning == false` when count returns 0 |
+| `UserSetupViewModel_HasActiveGoals_ShowWarningIsTrue` | `ShowWarning == true` when count returns 1 |
+
+**Note:** `UserSetupViewModel` tests live in `LifeGrid.Application.Tests` since no separate Presentation test project exists. The VM is injected with a mocked `IMediator`.
+
+#### Infrastructure Integration Tests (`LifeGrid.Infrastructure.Tests/Data/`)
+| Test | Assert |
+|---|---|
+| `FactoryReset_WithAllTablesPopulated_LeavesZeroRowsInAllDomainTables` | After `FactoryResetService.ResetAsync()`: `Habits`, `WeekGoals`, `Weeks`, `Goals`, `UserProfiles` all have count 0 |
+| `FactoryReset_ResetsOnboardingSessionToUnstarted` | `OnboardingProgressCache` row exists with `CurrentStep = "Unstarted"`, `IsComplete = false`, `UserId = null` |
+
+---
+
+### P7.11 Acceptance Criteria
+
+- `dotnet build LifeGrid.slnx` → 0 errors, 0 warnings.
+- `dotnet test` → all 137 existing tests pass + all new Phase 7 tests pass.
+- App restart with an existing goal: bottom nav tabs are enabled immediately; Goals page loads automatically.
+- Tapping the profile icon during onboarding (no goal yet): no navigation occurs.
+- Tapping the profile icon after onboarding: navigates to User Setup Hub.
+- User Setup Hub renders warning text in Error color only when an active goal exists.
+- "Edit Active Goals" opens the Goals list.
+- "Reset Goals" wipes all data, disables tabs, and pushes the Create Goal page.
+- "Detect Hidden Vices" button is rendered but performs no action.
+- After Factory Reset + completing a new goal: full pipeline runs again and navigates to Goals.
+
+---
+
+## P7.12 As-Built Outcome (2026-06-18)
+
+All acceptance criteria met. `dotnet build LifeGrid.slnx` → **Build succeeded. 0 Error(s). 0 Warning(s).** `dotnet test` → **149 tests passed.**
+
+### Corrections vs. Plan
+
+| Item | Planned | As Built |
+|---|---|---|
+| `UserSetupViewModelTests` placement | `LifeGrid.Application.Tests` | Not implemented in that project. `UserSetupViewModel` and `AppShellViewModel` live in `LifeGrid.Presentation` which targets `net10.0-android` — unreferenceable from a plain `net10.0` test project. The data path (`GetActiveGoalCountQuery` result → `HasActiveGoals`) is covered by `GetActiveGoalCountQueryTests`. A `LifeGrid.Presentation.Tests` project will address direct VM binding tests in a future phase. |
+| `FactoryResetService` dependency | Planned to accept `IOnboardingRepository` as constructor parameter | Removed the repository dependency. `GetActiveSessionAsync()` filters on `!IsComplete`, so a completed session (after `AdvanceToHabitsGenerated`) would not be found. The service queries `db.OnboardingSessions.FirstOrDefaultAsync()` directly — it already holds `LifeGridDbContext`, making the repository dependency redundant for this operation. |
+| Route rename file names | Plan expected physical file rename (`SetupPage.xaml` → `CreateGoalPage.xaml`) | Edited in place: `x:Class` changed to `CreateGoalPage` in `SetupPage.xaml`, class renamed in `SetupPage.xaml.cs`. MAUI's partial class generation is driven by `x:Class`, not the filename — both halves of the partial class compile correctly regardless of the source file name. |
+
+### New Files Created
+
+| File | Purpose |
+|---|---|
+| `src/LifeGrid.Domain/Onboarding/OnboardingSession.cs` | Added `Reset()` method |
+| `src/LifeGrid.Application/Goal/GetActiveGoalCountQuery.cs` | New query |
+| `src/LifeGrid.Application/Goal/IGoalRepository.cs` | Added `GetActiveCountAsync` |
+| `src/LifeGrid.Application/Common/IFactoryResetService.cs` | New interface |
+| `src/LifeGrid.Application/UserSetup/Commands/FactoryResetCommand.cs` | New command + handler |
+| `src/LifeGrid.Infrastructure/Data/Repositories/GoalRepository.cs` | Added `GetActiveCountAsync` |
+| `src/LifeGrid.Infrastructure/Data/Services/FactoryResetService.cs` | New service |
+| `src/LifeGrid.Infrastructure/DependencyInjection/InfrastructureServiceExtensions.cs` | Registered `IFactoryResetService` |
+| `src/LifeGrid.Presentation/Pages/SetupPage.xaml` | `x:Class` → `CreateGoalPage`, Title → "Create Goal" |
+| `src/LifeGrid.Presentation/Pages/SetupPage.xaml.cs` | Class renamed to `CreateGoalPage` |
+| `src/LifeGrid.Presentation/ViewModels/SetupViewModel.cs` | Class renamed to `CreateGoalViewModel` |
+| `src/LifeGrid.Presentation/AppShell.xaml.cs` | Routes `"create-goal"` + `"user-setup"` registered |
+| `src/LifeGrid.Presentation/MauiProgram.cs` | DI registrations updated |
+| `src/LifeGrid.Presentation/App.xaml.cs` | Startup goal detection + `AppShellViewModel` injection |
+| `src/LifeGrid.Presentation/Controls/HudView.xaml.cs` | Profile icon: no-op during onboarding, routes to `"user-setup"` after |
+| `src/LifeGrid.Presentation/ViewModels/UserSetupViewModel.cs` | New VM |
+| `src/LifeGrid.Presentation/Pages/UserSetupPage.xaml` | New page |
+| `src/LifeGrid.Presentation/Pages/UserSetupPage.xaml.cs` | New page code-behind |
+| `tests/LifeGrid.Domain.Tests/Onboarding/OnboardingSessionFactoryResetTests.cs` | 5 domain tests |
+| `tests/LifeGrid.Application.Tests/Goal/GetActiveGoalCountQueryTests.cs` | 3 application tests |
+| `tests/LifeGrid.Application.Tests/UserSetup/FactoryResetCommandTests.cs` | 2 application tests |
+| `tests/LifeGrid.Infrastructure.Tests/Data/FactoryResetServiceTests.cs` | 2 integration tests |
+
+### Test Counts by Layer
+
+| Layer | Tests | Result |
+|---|---|---|
+| Domain | 59 | All passed |
+| Application | 44 | All passed |
+| Infrastructure | 46 | All passed |
+| **Total** | **149** | **All passed** |

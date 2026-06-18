@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:controls="clr-namespace:LifeGrid.Presentation.Controls"
+    x:Class="LifeGrid.Presentation.Pages.UserSetupPage"
+    Title="User Setup"
+    BackgroundColor="{StaticResource Background}">
+
+    <Grid RowDefinitions="*,Auto">
+
+        <ScrollView Grid.Row="0">
+            <VerticalStackLayout
+                Padding="{StaticResource ScreenMargin}"
+                Spacing="{StaticResource SectionSpacing}">
+
+                <Label
+                    Text="User Setup"
+                    Style="{StaticResource HeadlineStyle}"
+                    Margin="0,8,0,0" />
+
+                <!-- ══════════════════════════════════════════════════════ -->
+                <!-- Component 1: Goal Management Block                     -->
+                <!-- ══════════════════════════════════════════════════════ -->
+                <VerticalStackLayout Spacing="{StaticResource ItemSpacing}">
+
+                    <Button
+                        Text="Edit Active Goals"
+                        BackgroundColor="{StaticResource Secondary}"
+                        TextColor="{StaticResource OnSecondary}"
+                        Command="{Binding EditActiveGoalsCommand}" />
+
+                    <Button
+                        Text="Reset Goals"
+                        BackgroundColor="Transparent"
+                        TextColor="{StaticResource Error}"
+                        BorderColor="{StaticResource Error}"
+                        BorderWidth="1"
+                        Command="{Binding ResetGoalsCommand}" />
+
+                </VerticalStackLayout>
+
+                <!-- ══════════════════════════════════════════════════════ -->
+                <!-- Component 2: Conditional Warning                       -->
+                <!-- ══════════════════════════════════════════════════════ -->
+                <Label
+                    Text="Warning: Resetting your goals will permanently wipe all current goals, Shield Points, XP, and restart your game from scratch."
+                    TextColor="{StaticResource Error}"
+                    IsVisible="{Binding ShowWarning}" />
+
+                <!-- ══════════════════════════════════════════════════════ -->
+                <!-- Component 3: Diagnostics                               -->
+                <!-- ══════════════════════════════════════════════════════ -->
+                <Button
+                    Text="Detect Hidden Vices"
+                    Command="{Binding DetectHiddenVicesCommand}" />
+
+            </VerticalStackLayout>
+        </ScrollView>
+
+        <controls:AdBannerView Grid.Row="1" />
+
+    </Grid>
+
+</ContentPage>

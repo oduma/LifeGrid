@@ -7,6 +7,7 @@ using LifeGrid.Application.Week;
 using LifeGrid.Infrastructure.AI;
 using LifeGrid.Infrastructure.Data;
 using LifeGrid.Infrastructure.Data.Repositories;
+using LifeGrid.Infrastructure.Data.Services;
 using LifeGrid.Infrastructure.Security;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
@@ -37,6 +38,7 @@ public static class InfrastructureServiceExtensions
         services.AddTransient<IChatClient, GeminiHttpChatClient>();
         services.AddTransient<IGeminiGoalValidationService, GeminiGoalValidationService>();
         services.AddTransient<IGeminiHabitGenerationService, GeminiHabitGenerationService>();
+        services.AddTransient<IFactoryResetService, FactoryResetService>();
 
         return services;
     }

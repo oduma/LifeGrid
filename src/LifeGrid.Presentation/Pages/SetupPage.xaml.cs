@@ -2,16 +2,16 @@ using LifeGrid.Presentation.ViewModels;
 
 namespace LifeGrid.Presentation.Pages;
 
-public partial class SetupPage : ContentPage
+public partial class CreateGoalPage : ContentPage
 {
-    private readonly SetupViewModel      _vm;
-    private readonly AppShellViewModel   _shellVm;
+    private readonly CreateGoalViewModel  _vm;
+    private readonly AppShellViewModel    _shellVm;
 
-    public SetupPage(SetupViewModel vm, AppShellViewModel shellVm)
+    public CreateGoalPage(CreateGoalViewModel vm, AppShellViewModel shellVm)
     {
         InitializeComponent();
-        BindingContext = _vm      = vm;
-        _shellVm                  = shellVm;
+        BindingContext = _vm = vm;
+        _shellVm              = shellVm;
     }
 
     protected override async void OnAppearing()

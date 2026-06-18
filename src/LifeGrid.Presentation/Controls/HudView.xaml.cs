@@ -1,3 +1,5 @@
+using LifeGrid.Presentation.ViewModels;
+
 namespace LifeGrid.Presentation.Controls;
 
 public partial class HudView : ContentView
@@ -8,7 +10,11 @@ public partial class HudView : ContentView
     }
 
     private async void OnProfileTapped(object? sender, TappedEventArgs e)
-        => await Shell.Current.GoToAsync("setup");
+    {
+        if (BindingContext is not AppShellViewModel { IsOnboardingComplete: true })
+            return;
+        await Shell.Current.GoToAsync("user-setup");
+    }
 
     private void OnNotificationsTapped(object? sender, TappedEventArgs e) { }
 }

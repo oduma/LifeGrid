@@ -12,7 +12,7 @@ using System.Text.Json;
 
 namespace LifeGrid.Presentation.ViewModels;
 
-public partial class SetupViewModel(IMediator mediator, AppShellViewModel appShellViewModel) : ObservableObject
+public partial class CreateGoalViewModel(IMediator mediator, AppShellViewModel appShellViewModel) : ObservableObject
 {
     private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
 

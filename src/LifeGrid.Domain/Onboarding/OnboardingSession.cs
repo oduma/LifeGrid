@@ -79,4 +79,16 @@ public sealed class OnboardingSession
         CurrentStep         = OnboardingStep.Step6_HabitsGenerated;
         LastActiveTimestamp = DateTime.UtcNow;
     }
+
+    public void Reset()
+    {
+        UserId                  = null;
+        CurrentStep             = OnboardingStep.Unstarted;
+        IsComplete              = false;
+        RawGoalDraft            = null;
+        ValidatedGoalJson       = null;
+        RefinementQuestionsJson = null;
+        RefinementAnswersJson   = null;
+        LastActiveTimestamp     = DateTime.UtcNow;
+    }
 }

@@ -1,4 +1,5 @@
 using LifeGrid.Application.Goal;
+using LifeGrid.Domain.Goal;
 using Microsoft.EntityFrameworkCore;
 using GoalAggregate = LifeGrid.Domain.Goal.Goal;
 
@@ -20,4 +21,8 @@ internal sealed class GoalRepository(LifeGridDbContext db) : IGoalRepository
         => await db.Goals
                    .Where(g => g.UserId == userId)
                    .ToListAsync(ct);
+
+    public Task<int> GetActiveCountAsync(Guid userId, CancellationToken ct = default)
+        => db.Goals
+             .CountAsync(g => g.UserId == userId && g.Status == GoalStatus.Active, ct);
 }
