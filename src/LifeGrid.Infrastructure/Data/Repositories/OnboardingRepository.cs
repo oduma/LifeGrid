@@ -7,7 +7,7 @@ namespace LifeGrid.Infrastructure.Data.Repositories;
 public sealed class OnboardingRepository(LifeGridDbContext db) : IOnboardingRepository
 {
     public Task<OnboardingSession?> GetActiveSessionAsync(CancellationToken ct = default)
-        => db.OnboardingSessions.FirstOrDefaultAsync(ct);
+        => db.OnboardingSessions.FirstOrDefaultAsync(s => !s.IsComplete, ct);
 
     public async Task<OnboardingSession> UpsertAsync(OnboardingSession session, CancellationToken ct = default)
     {

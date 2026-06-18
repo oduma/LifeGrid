@@ -829,3 +829,347 @@ All acceptance criteria met. `dotnet build LifeGrid.slnx` → **Build succeeded.
   - No production Goal write occurs if flow is abandoned before `FinalizeGoalCommand`.
 - **Infrastructure:** Mock `IChatClient` to return controlled JSON; assert malformed JSON returns `Result.Failure` without throwing; assert schema for `GoalRefinementAnswers` table (SQLite `:memory:` migration).
 - **Coverage mandate:** 100% branch coverage on all new Application command handlers and `GeminiGoalValidationService` JSON parsing paths.
+
+---
+
+# Phase 6 — AI Habit Generation Pipeline & Onboarding Finalization
+
+**Source:** `docs/requirements/Phase-6-requirements.md`  
+**Design authority refs:** `docs/specs/functional-requirements.md` §1.5, `docs/specs/assets/prompts/prompt2.1.txt`, `docs/specs/assets/prompts/prompt2.2.txt`, `docs/specs/data-structure.json`
+
+---
+
+## P6.1 Trigger & Data Flow
+
+- Phase 6 begins **automatically** immediately after `FinalizeGoalCommand` succeeds — no additional user tap is required.
+- Input: the `Goal` entity just persisted (Phase 5), carrying `GoalId`, `Description`, `AmbientTag`, `Duration`, `DeadlineDate`, and the populated `RefinementAnswers` collection (the user's baseline answers).
+- Phase 6 feeds this bundle through a chained two-call Gemini pipeline and persists the resulting schedule atomically.
+
+---
+
+## P6.2 OnboardingStep Enum Expansion
+
+- Add `Step6_HabitsGenerated` to the `OnboardingStep` enum in `LifeGrid.Domain/Onboarding/OnboardingStep.cs`.
+- `OnboardingSession.IsComplete` is set to `true` **exclusively** by the new `AdvanceToHabitsGenerated()` domain method.
+- `AdvanceToHabitsGenerated()`: sets `CurrentStep = Step6_HabitsGenerated`, `IsComplete = true`, and updates `LastActiveTimestamp`.
+
+---
+
+## P6.3 New Domain Entities: Week, WeekGoal, Habit
+
+All entities live in `LifeGrid.Domain/Habit/`. No EF Core attributes on any domain type.
+
+### Week
+- `WeekId: Guid` — PK; `WeekNumber: int`; `StartDate: DateTime`; `Status: WeekStatus` (default `Active`); `TotalWeeklySpEarned: int` (default `0`)
+- Navigation: `IReadOnlyCollection<WeekGoal> WeekGoals`
+- Factory: `Week.Create(int weekNumber, DateTime startDate)`
+
+### WeekGoal
+- `WeekGoalId: Guid` — PK; `WeekId: Guid` — FK; `GoalId: Guid` — ID-only cross-aggregate reference (no navigation property)
+- `PenaltyState: PenaltyState` (default `Clean`); `GoalWeeklyGp: double` (default `0.0`); `GoalWeeklyXpEarned: int` (default `0`)
+- Navigation: `IReadOnlyCollection<Habit> Habits`
+- Factory: `WeekGoal.Create(Guid weekId, Guid goalId)`
+
+### Habit
+- `HabitId: Guid` — PK; `WeekGoalId: Guid` — FK; `HabitType: HabitType` (default `Planned`)
+- `HabitName: string`; `HabitDescription: string`; `TargetValue: double`; `MeasurementUnit: string`; `DeadlineDateTime: DateTime`
+- `CompletedValuesLog` collection is **deferred** to the Execution Phase — not present in this entity yet.
+- Factory: `Habit.Create(Guid weekGoalId, string habitName, string habitDescription, double targetValue, string measurementUnit, DateTime deadlineDateTime)`
+
+### Supporting Enums (all in `LifeGrid.Domain/Habit/`)
+- `WeekStatus`: `Active | Hibernated | Frozen`
+- `PenaltyState`: `Clean | Level1Warning | ProbationWeek2 | ReckoningWeek3`
+- `HabitType`: `Planned | MomentBurst | Flash`
+
+### DDD Constraints
+- All three entities: private parameterless constructor (EF Core) + static `Create()` factory; all properties `private set`.
+- `WeekGoal.GoalId` is an ID-only cross-aggregate reference — no navigation property to `Goal`.
+
+---
+
+## P6.4 Application Layer — New DTOs
+
+Located in `LifeGrid.Application/Habit/`:
+
+- `HabitScheduleItemDto(string Description, double Value, string Unit)` — one habit from prompt2.2 output
+- `WeekScheduleDto(int WeekNumber, DateTime StartDate, IReadOnlyList<HabitScheduleItemDto> Habits)` — one week from prompt2.2 output
+- `HabitSchedulingResult` — discriminated union returned by `IGeminiHabitGenerationService`:
+  - `HabitSchedulingResult.Feasible(IReadOnlyList<WeekScheduleDto> Schedule)` — AI approved the goal
+  - `HabitSchedulingResult.Infeasible(string RecalibrationReason, string? SuggestedDeadline, string? SuggestedAlternativeScope)` — AI flagged the goal as unsafe
+- `HabitGenerationOutcome` — discriminated union returned by `GenerateHabitsCommand`:
+  - `HabitGenerationOutcome.Complete` — habits were generated and persisted successfully
+  - `HabitGenerationOutcome.Infeasible(string RecalibrationReason, string? SuggestedDeadline, string? SuggestedAlternativeScope)` — goal flagged unsafe by AI
+
+Located in `LifeGrid.Application/Goal/`:
+- `GoalSummaryDto(Guid GoalId, string Description, string AmbientTag, string Duration, DateTime DeadlineDate, string Status)` — for the Goals list
+
+---
+
+## P6.5 Application Layer — New Interfaces
+
+### `IGeminiHabitGenerationService` (in `LifeGrid.Application/Habit/`)
+```
+Task<Result<HabitSchedulingResult>> GenerateScheduleAsync(
+    string goalAsStated,
+    string deadlineAsStated,
+    string baselineAnswersJson,
+    CancellationToken ct = default)
+```
+- Returns `Result.Failure` for technical failures (rate limit, network, parsing).
+- Returns `Result.Success(Infeasible)` when the AI determines the goal is unsafe; the caller can surface the `RecalibrationReason` and suggested alternatives.
+
+### `IHabitScheduleRepository` (in `LifeGrid.Application/Habit/`)
+```
+Task SaveScheduleAsync(Guid goalId, IReadOnlyList<WeekScheduleDto> schedule, CancellationToken ct = default)
+```
+- Must execute as an atomic transaction; rolls back entirely on any failure.
+
+---
+
+## P6.6 Application Layer — IGoalRepository Extension
+
+Add two methods to `IGoalRepository`:
+- `Task<Goal?> GetByUserIdAsync(Guid userId, CancellationToken ct = default)` — returns the goal for the current user (single-user invariant; first match)
+- `Task<IReadOnlyList<Goal>> GetAllByUserIdAsync(Guid userId, CancellationToken ct = default)` — returns all goals for the Goals list
+
+---
+
+## P6.7 Application Layer — New Commands & Queries
+
+### `GenerateHabitsCommand : IRequest<Result<HabitGenerationOutcome>>`
+Handler steps:
+1. Load active `OnboardingSession`; fail if none or step ≠ `Step1_ExecutionVerified`.
+2. Load `UserProfile` via `IUserProfileRepository.GetSingleAsync()`; fail if null.
+3. Load `Goal` via `IGoalRepository.GetByUserIdAsync(userProfile.UserId)`; fail if null.
+4. Build `baselineAnswersJson` from `goal.RefinementAnswers` — JSON array of `{"question": ..., "answer": ...}` pairs.
+5. Call `IGeminiHabitGenerationService.GenerateScheduleAsync(goal.Description, goal.DeadlineDate.ToString("yyyy-MM-dd"), baselineAnswersJson)`.
+6. On `Result.Failure` → return `Result.Failure(error)` (technical failure surfaced as-is).
+7. On `HabitSchedulingResult.Infeasible` → return `Result.Success(HabitGenerationOutcome.Infeasible(...))`.
+8. On `HabitSchedulingResult.Feasible` → call `IHabitScheduleRepository.SaveScheduleAsync(goal.GoalId, schedule)`.
+9. Call `session.AdvanceToHabitsGenerated()`; persist via `IOnboardingRepository.UpsertAsync()`.
+10. Return `Result.Success(HabitGenerationOutcome.Complete)`.
+
+### `StartNewGoalSessionCommand : IRequest<Result>`
+- Creates `OnboardingSession.Create()`, persists via `IOnboardingRepository.UpsertAsync()`.
+- Used by the Goals page "Add Goal" action to initiate a subsequent goal pipeline.
+
+### `GetGoalsQuery : IRequest<Result<IReadOnlyList<GoalSummaryDto>>>`
+- Handler: loads `UserProfile`, calls `IGoalRepository.GetAllByUserIdAsync(userId)`, maps to `GoalSummaryDto` list.
+
+---
+
+## P6.8 Infrastructure — GeminiHabitGenerationService
+
+- Implements `IGeminiHabitGenerationService` in `LifeGrid.Infrastructure/AI/`.
+- Uses the injected `IChatClient` (same singleton as Phase 5 services).
+- Loads `prompt2.1.txt` and `prompt2.2.txt` as `EmbeddedResource` from `LifeGrid.Infrastructure.AI.Prompts`.
+- **Prompt2.1 preprocessing:** prepend `[Current date: {DateTime.UtcNow:MMMM d, yyyy}]` to override the hardcoded date; replace `${USER_GOAL}`, `${USER_DEADLINE}`, `${USER_BASELINE_ANSWERS_JSON}`.
+- **Chain Call 1 (Blueprint):** send preprocessed prompt2.1 to Gemini; parse the `isFeasible` field from the JSON response.
+  - `isFeasible = false` → return `Result.Success(HabitSchedulingResult.Infeasible(...))` with `recalibration_reason`, `recommended_recalibration.suggested_deadline`, and `recommended_recalibration.suggested_alternative_scope`.
+  - Technical failure → return `Result.Failure(error)`.
+- **Chain Call 2 (Schedule):** take the **full raw JSON string** from Call 1's response as the value for `${COACH_SPECIALIST_PARAMETERS_JSON}` in prompt2.2; send to Gemini.
+- **Parse Call 2:** deserialize `weeks[]` array into `IReadOnlyList<WeekScheduleDto>`; return `Result.Success(HabitSchedulingResult.Feasible(schedule))`.
+- **Error handling:** same `catch (HttpRequestException ex) when (ex.StatusCode == TooManyRequests)` pattern as `GeminiGoalValidationService`.
+
+---
+
+## P6.9 Infrastructure — Prompt File Embedding
+
+- Copy `docs/specs/assets/prompts/prompt2.1.txt` and `prompt2.2.txt` into `src/LifeGrid.Infrastructure/AI/Prompts/`.
+- Register both as `<EmbeddedResource>` in `LifeGrid.Infrastructure.csproj` (same pattern as `prompt1.txt` and `prompt2.txt`).
+
+---
+
+## P6.10 Infrastructure — EF Core Schema: Week / WeekGoal / Habit
+
+Fluent API configurations in `src/LifeGrid.Infrastructure/Data/EntityConfigurations/`:
+
+| Configuration File | Table | Key Mappings |
+|---|---|---|
+| `WeekConfiguration` | `Weeks` | PK `WeekId`; `Status` as `string` max 30; HasMany `WeekGoals` |
+| `WeekGoalConfiguration` | `WeekGoals` | PK `WeekGoalId`; FK `WeekId → Weeks` (Cascade); FK `GoalId → Goals` (Restrict, no nav prop); `PenaltyState` as `string` max 30; HasMany `Habits` |
+| `HabitConfiguration` | `Habits` | PK `HabitId`; FK `WeekGoalId → WeekGoals` (Cascade); `HabitType` as `string` max 30; `HabitName` max 500; `HabitDescription` max 2000; `MeasurementUnit` max 100 |
+
+Add to `LifeGridDbContext`: `DbSet<Week>`, `DbSet<WeekGoal>`, `DbSet<Habit>`.
+
+New EF Core migration: `AddHabitScheduleSchema` (generated via `dotnet ef migrations add`).
+
+---
+
+## P6.11 Infrastructure — HabitScheduleRepository
+
+- Implements `IHabitScheduleRepository`.
+- Opens an explicit EF Core transaction (`await context.Database.BeginTransactionAsync(ct)`).
+- For each `WeekScheduleDto`:
+  1. `Week.Create(weekNumber, startDate)` → add to DbContext.
+  2. `WeekGoal.Create(week.WeekId, goalId)` → add to DbContext.
+  3. For each `HabitScheduleItemDto`: `Habit.Create(weekGoal.WeekGoalId, ...)` → add to DbContext.
+- `await context.SaveChangesAsync(ct)` → `await transaction.CommitAsync(ct)`.
+- On any exception: `await transaction.RollbackAsync()` and re-throw — leaves zero orphaned records.
+
+---
+
+## P6.12 Infrastructure — OnboardingRepository Fix
+
+Change `GetActiveSessionAsync` to filter by `!IsComplete`:
+```csharp
+db.OnboardingSessions.FirstOrDefaultAsync(s => !s.IsComplete, ct)
+```
+This ensures:
+- Post-onboarding cold starts no longer navigate to `SetupPage`.
+- `GetOrCreateOnboardingSessionQuery` (called after `StartNewGoalSessionCommand` adds a new session) correctly returns the new incomplete session.
+
+---
+
+## P6.13 Infrastructure — DI Registration
+
+In `InfrastructureServiceExtensions`:
+- `IGeminiHabitGenerationService → GeminiHabitGenerationService` (transient)
+- `IHabitScheduleRepository → HabitScheduleRepository` (scoped)
+
+---
+
+## P6.14 Presentation — SetupViewModel: Chained Habit Generation
+
+Immediately after `ConfirmAndInitializeAsync` receives a successful `Result` from `FinalizeGoalCommand`:
+1. Set `IsRefinementActive = false`; `IsGeneratingHabits = true`.
+2. Dispatch `GenerateHabitsCommand` via MediatR.
+3. Set `IsGeneratingHabits = false`.
+4. **On `Result.Failure`:** set `ValidationError = error`; remain on SetupPage.
+5. **On `HabitGenerationOutcome.Infeasible`:** set `InfeasibilityReason = RecalibrationReason + suggested alternative`; remain on SetupPage showing State F.
+6. **On `HabitGenerationOutcome.Complete`:** call `appShellViewModel.SetOnboardingComplete()`; navigate `Shell.Current.GoToAsync("//goals")`.
+
+New observable properties on `SetupViewModel`: `IsGeneratingHabits (bool)`, `InfeasibilityReason (string)`.
+
+`AppShellViewModel` is injected into `SetupViewModel` as a constructor parameter.
+
+---
+
+## P6.15 Presentation — SetupPage XAML: New States
+
+The Phase 5 State E ("Goal Refined and Stored. Ready for Phase 6...") **is removed**. The two new states replace it:
+
+**State E — Generating Habits** (visible when `IsGeneratingHabits = true`):
+- Center-aligned `ActivityIndicator` (running, Primary color)
+- `Label` "Crafting your personalized plan..." (Share Tech Mono, OnSurface)
+
+**State F — Infeasibility** (visible when `InfeasibilityReason` is non-empty, via `StringNotEmptyConverter`):
+- `Label` showing `InfeasibilityReason` (Error color, Share Tech Mono)
+- `Button` "Revise Your Goal" (2px corner radius) — resets `InfeasibilityReason`, `IsExecutionVerified`, and `GoalDraft` to State A
+
+---
+
+## P6.16 Presentation — AppShellViewModel Update
+
+Add `SetOnboardingComplete()` public method:
+```csharp
+public void SetOnboardingComplete() => IsOnboardingComplete = true;
+```
+Called by `SetupViewModel` after `HabitGenerationOutcome.Complete` is received.
+
+---
+
+## P6.17 Presentation — GoalsPage
+
+New `GoalsViewModel` (in `LifeGrid.Presentation/ViewModels/`):
+- `ObservableCollection<GoalSummaryItem> Goals` — loaded via `GetGoalsQuery` on page appear
+- `AddGoalCommand`: dispatches `StartNewGoalSessionCommand` then `Shell.Current.GoToAsync("setup")`
+- `GoalSummaryItem` record: `GoalId`, `Description`, `AmbientTag`, `Duration`, `DeadlineDate`, `Status`
+
+`GoalsPage.xaml` content (Main Interaction Area only — HUD and AdBanner unchanged):
+- `CollectionView` bound to `Goals`:
+  - Each item: `Label` (Description, HeadlineStyle), `Label` (AmbientTag + " · " + Status, OnSurface), `Label` (DeadlineDate formatted `yyyy-MM-dd`, Primary color)
+  - Empty state: `Label` "No goals yet" (centered)
+- `Button` "Add Goal" (Primary style, 2px corner radius) bound to `AddGoalCommand`, anchored below the list
+
+---
+
+## P6.18 TDD Invariants
+
+### Domain Tests (`LifeGrid.Domain.Tests/Habit/`)
+| Test | Assert |
+|---|---|
+| `Week_Create_SetsCorrectDefaults` | `Status == Active`, `TotalWeeklySpEarned == 0`, `WeekGoals` empty |
+| `Week_Create_PreservesWeekNumberAndStartDate` | Fields match constructor args |
+| `WeekGoal_Create_SetsCorrectDefaults` | `PenaltyState == Clean`, `GoalWeeklyGp == 0.0`, `Habits` empty |
+| `Habit_Create_PreservesAllFields` | All target/type fields round-trip correctly |
+| `OnboardingSession_AdvanceToHabitsGenerated_SetsIsCompleteTrue` | `IsComplete == true` |
+| `OnboardingSession_AdvanceToHabitsGenerated_SetsCorrectStep` | `CurrentStep == Step6_HabitsGenerated` |
+
+### Application Tests (`LifeGrid.Application.Tests/Habit/`)
+| Test | Assert |
+|---|---|
+| `GenerateHabitsCommand_HappyPath_AdvancesSessionAndReturnsComplete` | Session at `Step6_HabitsGenerated`; outcome is `Complete` |
+| `GenerateHabitsCommand_HappyPath_CallsSaveScheduleWithCorrectGoalId` | `IHabitScheduleRepository.SaveScheduleAsync` called with goal's `GoalId` |
+| `GenerateHabitsCommand_TechnicalFailure_ReturnsFailure` | `Result.IsSuccess == false`; no save called |
+| `GenerateHabitsCommand_Infeasible_ReturnsInfeasibleOutcome` | `Result.IsSuccess == true`; value is `Infeasible`; no save called |
+| `GenerateHabitsCommand_NoActiveSession_ReturnsFailure` | Fails cleanly |
+| `GenerateHabitsCommand_GoalNotFound_ReturnsFailure` | Fails cleanly |
+
+### Infrastructure AI Tests (`LifeGrid.Infrastructure.Tests/AI/`)
+| Test | Assert |
+|---|---|
+| `GeminiHabitGenerationService_HappyPath_ReturnsFeasibleSchedule` | `Feasible` result with correct week count |
+| `GeminiHabitGenerationService_Infeasible_ReturnsInfeasibleResult` | `Infeasible` result with `RecalibrationReason` populated |
+| `GeminiHabitGenerationService_ChainedCall_Call2ReceivesCall1RawJson` | Assert mock call 2's prompt contains the exact JSON string returned by mock call 1 |
+| `GeminiHabitGenerationService_Call1MalformedJson_ReturnsFailure` | `Result.IsSuccess == false` without throwing |
+| `GeminiHabitGenerationService_Call2MalformedJson_ReturnsFailure` | `Result.IsSuccess == false` without throwing |
+| `GeminiHabitGenerationService_RateLimit_ReturnsFailureWithWaitHint` | Error contains "rate limit" |
+
+### Infrastructure DB Integration Tests (`LifeGrid.Infrastructure.Tests/Data/`)
+| Test | Assert |
+|---|---|
+| `HabitScheduleRepository_SaveSchedule_PersistsAllEntities` | `db.Weeks`, `db.WeekGoals`, `db.Habits` counts match schedule |
+| `HabitScheduleRepository_RollbackOnFailure_LeavesZeroOrphanedRecords` | After simulated exception mid-save: all three tables remain empty |
+
+---
+
+## P6.19 Acceptance Criteria
+
+- `dotnet build LifeGrid.slnx` → 0 errors, 0 warnings.
+- `dotnet test` → all 87 existing tests pass + all new Phase 6 tests pass.
+- After "Confirm & Initialize": loading spinner appears immediately; on success, all 4 bottom nav tabs enable and app navigates to the Goals tab.
+- Goals tab displays the generated goal (description, tag, deadline) with an "Add Goal" button.
+- "Add Goal" navigates to SetupPage; the full pipeline (validate → refine → generate habits) runs again for the new goal.
+- If Gemini returns `isFeasible=false`: infeasibility message + recalibration suggestion rendered; "Revise Your Goal" button returns to goal entry (State A).
+- Forced deserialization error mid-save → zero orphaned `Week`, `WeekGoal`, or `Habit` rows remain.
+
+---
+
+## P6.20 As-Built Outcome (2026-06-18)
+
+All acceptance criteria met. `dotnet build LifeGrid.slnx` → **Build succeeded. 0 Error(s). 0 Warning(s).** `dotnet test` → **137 tests passed.**
+
+### Corrections vs. Plan
+
+| Item | Planned | As Built |
+|---|---|---|
+| `Week` / `WeekGoal` namespace | `LifeGrid.Domain.Habit` (same folder as `Habit`) | Moved to own namespaces `LifeGrid.Domain.Week` and `LifeGrid.Domain.WeekGoal` — these are principal aggregates like `Goal` and `UserProfile`, not sub-entities of `Habit`. |
+| Application layer namespaces | Week/WeekGoal DTOs and interfaces in `LifeGrid.Application.Habit` | Moved to `LifeGrid.Application.Week` — `HabitScheduleItemDto`, `WeekScheduleDto`, `HabitSchedulingResult`, `HabitGenerationOutcome`, `IGeminiHabitGenerationService` all live in `LifeGrid.Application.Week`. |
+| `WeekGoal.Habits` navigation | `WeekGoal` had `IReadOnlyCollection<Habit> Habits` and `AddHabit()` | Navigation removed entirely — it crossed aggregate boundaries (DDD violation). FK from `Habit` to `WeekGoal` is configured only from `HabitConfiguration` side via `HasOne<WeekGoal>().WithMany()`. `ModelSnapshot.cs` patched manually to match. |
+| `IHabitScheduleRepository` | Single `SaveScheduleAsync(goalId, schedule)` with internal explicit EF transaction | Replaced by three collaborators: `IWeekRepository.AddAsync(week, weekGoal)`, `IHabitRepository.AddRangeAsync(habits)`, and `IUnitOfWork.CommitAsync()`. Repositories only call `db.Add()`; the command handler stages all entities across the loop, then calls `unitOfWork.CommitAsync()` once for atomicity. `LifeGridDbContext` implements `IUnitOfWork` via `CommitAsync → SaveChangesAsync`. |
+| `GenerateHabitsCommand` dependencies | `IOnboardingRepository`, `IUserProfileRepository`, `IGoalRepository`, `IGeminiHabitGenerationService`, `IHabitScheduleRepository` | Changed to: `IOnboardingRepository`, `IUserProfileRepository`, `IGoalRepository`, `IGeminiHabitGenerationService`, `IWeekRepository`, `IHabitRepository`, `IUnitOfWork`. |
+| EF migration startup project | `--startup-project src/LifeGrid.Presentation` | Removed `--startup-project` flag — Presentation targets `net10.0-android` and cannot be a startup project for EF CLI. Command used: `dotnet ef migrations add AddHabitScheduleSchema --project src/LifeGrid.Infrastructure`. |
+| `FluentAssertions` `.Or` chaining | `result.Error.Should().Contain(...).Or.Contain(...)` | `.Or` is not available on `AndConstraint<StringAssertions>` in the version in use. Fixed by using `.ContainAny("Too aggressive", "aggressive", "Timeline")`. |
+| Nullable tuple in test | `(1, "What is your baseline?", "5k comfortable")` | Positional parameter type for `answer` is `string?` — required explicit cast `(string?)"5k comfortable"` to avoid CS8620. |
+
+### Bug Fix Added During Phase 6 Session
+
+A regression was identified and fixed: after answering refinement questions and restarting the app, users were presented with the goal creation form (State A) instead of the refinement questions or the habit-generation spinner.
+
+**Root cause 1 (State A instead of spinner):** `LoadAsync` had no handler for `Step1_ExecutionVerified`. When `FinalizeGoalCommand` succeeded but the app was killed before `GenerateHabitsCommand` completed (or committed), the session was left at `Step1_ExecutionVerified` with all staging JSON cleared. On restart, `LoadAsync` fell through to State A. **Fix:** added `Step1_ExecutionVerified` branch in `LoadAsync` that calls `AutoResumeHabitGenerationAsync()` — re-triggers `GenerateHabitsCommand` immediately (safe because the UoW is atomic; a partial first attempt leaves zero rows).
+
+**Root cause 2 (answers lost on restart):** `OnboardingSession` had `RefinementQuestionsJson` but no `RefinementAnswersJson`. Typed answers lived only in the ViewModel's `ObservableCollection`. **Fix:** added `RefinementAnswersJson` field and `SaveRefinementAnswers()` domain method. `AdvanceToExecutionVerified()` now clears it alongside the other staging fields. A debounced `SaveRefinementAnswersCommand` fires 500 ms after any `RefinementItem.Answer` changes (via `PropertyChanged` subscription in `PopulateRefinementItems`). `RestoreRefinementState` deserializes and pre-fills answers via `RestoreAnswers()`. New EF migration: `AddRefinementAnswersJsonToSession`.
+
+**Root cause 3 (spurious auto-save during load):** Setting `GoalDraft` in `LoadAsync` triggered `OnGoalDraftChanged → ScheduleAutoSave`. **Fix:** added `_isLoading` flag; `OnGoalDraftChanged` is now guarded by `if (!_isLoading)`.
+
+New files added for the bug fix: `SaveRefinementAnswersCommand.cs`, `OnboardingSessionRefinementAnswersTests.cs`, `SaveRefinementAnswersCommandTests.cs`, migration `20260618141907_AddRefinementAnswersJsonToSession.cs`.
+
+### Test Counts by Layer
+
+| Layer | Tests | Result |
+|---|---|---|
+| Domain | 54 | All passed |
+| Application | 39 | All passed |
+| Infrastructure | 44 | All passed |
+| **Total** | **137** | **All passed** |

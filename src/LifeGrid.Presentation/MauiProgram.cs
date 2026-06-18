@@ -36,6 +36,8 @@ public static class MauiProgram
         builder.Services.AddSingleton<AppShell>();
         builder.Services.AddTransient<SetupViewModel>();
         builder.Services.AddTransient<SetupPage>();
+        builder.Services.AddTransient<GoalsViewModel>();
+        builder.Services.AddTransient<GoalsPage>();
 
 #if DEBUG
         builder.Logging.AddDebug();

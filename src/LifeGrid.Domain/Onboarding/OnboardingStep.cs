@@ -6,5 +6,6 @@ public enum OnboardingStep
     Step1_GoalDraftCaptured,
     Step1_AwaitingValidation,
     Step1_RefinementQuestionsActive,
-    Step1_ExecutionVerified
+    Step1_ExecutionVerified,
+    Step6_HabitsGenerated
 }

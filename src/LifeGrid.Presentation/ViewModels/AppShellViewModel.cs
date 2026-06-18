@@ -9,4 +9,6 @@ public partial class AppShellViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _isProfileActive = false;
+
+    public void SetOnboardingComplete() => IsOnboardingComplete = true;
 }

@@ -9,16 +9,45 @@
 
     <Grid RowDefinitions="*,Auto">
 
-        <ScrollView Grid.Row="0">
-            <Grid>
-                <Label
-                    Text="Placeholder Text"
-                    HorizontalOptions="Center"
-                    VerticalOptions="Center"
-                    HorizontalTextAlignment="Center"
-                    VerticalTextAlignment="Center" />
-            </Grid>
-        </ScrollView>
+        <Grid Grid.Row="0" RowDefinitions="*,Auto">
+
+            <CollectionView
+                Grid.Row="0"
+                ItemsSource="{Binding Goals}">
+
+                <CollectionView.EmptyView>
+                    <Label
+                        Text="No goals yet"
+                        HorizontalOptions="Center"
+                        VerticalOptions="Center"
+                        HorizontalTextAlignment="Center" />
+                </CollectionView.EmptyView>
+
+                <CollectionView.ItemTemplate>
+                    <DataTemplate>
+                        <VerticalStackLayout Padding="16,8" Spacing="4">
+                            <Label
+                                Text="{Binding Description}"
+                                Style="{StaticResource HeadlineStyle}" />
+                            <Label
+                                Text="{Binding AmbientTag}"
+                                TextColor="{StaticResource OnSurface}" />
+                            <Label
+                                Text="{Binding DeadlineDate, StringFormat='{0:yyyy-MM-dd}'}"
+                                TextColor="{StaticResource Primary}" />
+                        </VerticalStackLayout>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+
+            </CollectionView>
+
+            <Button
+                Grid.Row="1"
+                Text="Add Goal"
+                Command="{Binding AddGoalCommand}"
+                Margin="16,8" />
+
+        </Grid>
 
         <controls:AdBannerView Grid.Row="1" />
 

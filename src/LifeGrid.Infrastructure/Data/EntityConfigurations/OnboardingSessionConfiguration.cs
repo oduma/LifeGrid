@@ -26,5 +26,6 @@ public sealed class OnboardingSessionConfiguration : IEntityTypeConfiguration<On
                .OnDelete(DeleteBehavior.SetNull);
         builder.Property(e => e.ValidatedGoalJson);
         builder.Property(e => e.RefinementQuestionsJson);
+        builder.Property(e => e.RefinementAnswersJson);
     }
 }

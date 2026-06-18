@@ -51,7 +51,7 @@
   "OnboardingProgressCache": {
     "SessionID": "Guid",
     "UserID": "Guid? // Nullable FK to User_Profile; NULL until UserProfile is created",
-    "Current_Step": "String (Unstarted, Step1_GoalDraftCaptured, Step1_AwaitingValidation, Step1_RefinementQuestionsActive, Step1_ExecutionVerified)",
+    "Current_Step": "String (Unstarted, Step1_GoalDraftCaptured, Step1_AwaitingValidation, Step1_RefinementQuestionsActive, Step1_ExecutionVerified, Step6_HabitsGenerated)",
     "Is_Complete": "Boolean",
     "Raw_Goal_Draft": "String (Nullable)",
     "Last_Active_Timestamp": "DateTime",

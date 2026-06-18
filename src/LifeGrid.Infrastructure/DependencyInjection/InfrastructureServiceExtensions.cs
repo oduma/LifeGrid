@@ -1,6 +1,9 @@
+using LifeGrid.Application.Common;
 using LifeGrid.Application.Goal;
+using LifeGrid.Application.Habit;
 using LifeGrid.Application.Onboarding;
 using LifeGrid.Application.UserProfile;
+using LifeGrid.Application.Week;
 using LifeGrid.Infrastructure.AI;
 using LifeGrid.Infrastructure.Data;
 using LifeGrid.Infrastructure.Data.Repositories;
@@ -22,6 +25,9 @@ public static class InfrastructureServiceExtensions
         services.AddScoped<IOnboardingRepository, OnboardingRepository>();
         services.AddScoped<IUserProfileRepository, UserProfileRepository>();
         services.AddScoped<IGoalRepository, GoalRepository>();
+        services.AddScoped<IWeekRepository, WeekRepository>();
+        services.AddScoped<IHabitRepository, HabitRepository>();
+        services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<LifeGridDbContext>());
 
         services.AddSingleton<ISecureStorageService, SecureStorageService>();
         services.AddSingleton<IBuildSecretProvider, BuildSecretProvider>();
@@ -30,6 +36,7 @@ public static class InfrastructureServiceExtensions
         services.AddSingleton<HttpClient>();
         services.AddTransient<IChatClient, GeminiHttpChatClient>();
         services.AddTransient<IGeminiGoalValidationService, GeminiGoalValidationService>();
+        services.AddTransient<IGeminiHabitGenerationService, GeminiHabitGenerationService>();
 
         return services;
     }
