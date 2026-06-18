@@ -46,8 +46,8 @@ The system uses the category tag and goal keyword to pull the precise variables 
 * **Data Submission & AI Processing:** Once the user answers the maximum of 3 AI-generated environmental questions, they submit these text responses alongside the structured goal information (Name, Calculated Deadline, Duration). The AI engine processes this complete, bundled payload to dynamically formulate the tailored weekly habits and the initial schedule.
 * **Tailored Difficulty:** The user's answers directly modify the *intensity value* of the recommended habits. (e.g., An absolute beginner runner gets "Walk 5km/week" in Week 1; an experienced runner gets "Run 15km/week" in Week 1).
 * **Validating the Success Metric:** This context ensures the math remains honest. If a user lies about their baseline, the AI will generate habits that are too difficult, prematurely triggering the Procrastination Escalator.
-* **Prompts for generaticng the habits:** <file path=".\assets\prompts\prompt2.1.txt"> <file path="prompt2.2.txt">
-* **Navigation after etsblishing the habits** app navigates back to the create goal screens but now the screen also has a list of one existing clickable goal on top of the chat box.
+* **Prompts for generaticng the habits:** <file path=".\assets\prompts\prompt2.1.txt"> <file path=".\assets\prompts\prompt2.2.txt">
+* **Navigation after etsblishing the habits** app navigates back to the create goal screens but now the screen also has a list of one existing clickable goal and underneath there is an Add New Goal button that if clicked will launch again the creation of another goal.
 * **Wireframe** <file path=".\assets\wireframes\wf1.png">
 
 ### 1.6 Contextual, Adaptive Weekly Scaling

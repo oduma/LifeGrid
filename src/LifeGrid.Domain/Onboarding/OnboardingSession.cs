@@ -31,7 +31,37 @@ public sealed class OnboardingSession
         LastActiveTimestamp = DateTime.UtcNow;
     }
 
-    public Guid? UserId { get; private set; }
+    public Guid?   UserId                 { get; private set; }
+    public string? ValidatedGoalJson      { get; private set; }
+    public string? RefinementQuestionsJson { get; private set; }
 
     public void LinkToUser(Guid userId) => UserId = userId;
+
+    public void AdvanceToAwaitingValidation()
+    {
+        CurrentStep         = OnboardingStep.Step1_AwaitingValidation;
+        LastActiveTimestamp = DateTime.UtcNow;
+    }
+
+    public void AdvanceToRefinementQuestionsActive(string validatedGoalJson, string refinementQuestionsJson)
+    {
+        ValidatedGoalJson       = validatedGoalJson;
+        RefinementQuestionsJson = refinementQuestionsJson;
+        CurrentStep             = OnboardingStep.Step1_RefinementQuestionsActive;
+        LastActiveTimestamp     = DateTime.UtcNow;
+    }
+
+    public void AdvanceToExecutionVerified()
+    {
+        ValidatedGoalJson       = null;
+        RefinementQuestionsJson = null;
+        CurrentStep             = OnboardingStep.Step1_ExecutionVerified;
+        LastActiveTimestamp     = DateTime.UtcNow;
+    }
+
+    public void RevertToGoalDraftCaptured()
+    {
+        CurrentStep         = OnboardingStep.Step1_GoalDraftCaptured;
+        LastActiveTimestamp = DateTime.UtcNow;
+    }
 }

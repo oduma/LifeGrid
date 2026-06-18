@@ -24,5 +24,7 @@ public sealed class OnboardingSessionConfiguration : IEntityTypeConfiguration<On
                .HasForeignKey(e => e.UserId)
                .IsRequired(false)
                .OnDelete(DeleteBehavior.SetNull);
+        builder.Property(e => e.ValidatedGoalJson);
+        builder.Property(e => e.RefinementQuestionsJson);
     }
 }

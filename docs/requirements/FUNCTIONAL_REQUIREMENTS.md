@@ -699,3 +699,133 @@ All acceptance criteria met. `dotnet build LifeGrid.slnx` → **Build succeeded.
 | Infrastructure | 16 (9 existing + 7 new) | All passed |
 | **Total** | **46** | **All passed** |
 - Running `scripts\setup-dev-secrets.ps1` on a clean machine produces a passing build end-to-end.
+
+---
+
+## Phase 5: Onboarding Step 1 — AI Validation & Goal Refinement Pipeline
+
+### P5.1 Trigger & Input
+- Phase 5 is triggered when the user taps "Next" on the SetupPage goal-entry screen.
+- Input is the `RawGoalDraft` string already persisted in `OnboardingProgressCache` by Phase 2's `UpdateGoalDraftCommand`.
+- No `Goal` entity or production database write occurs before P5.9 (Explicit Transaction Gate).
+
+### P5.2 OnboardingStep Enum Expansion
+- Extend `OnboardingStep` with three new values in sequence after `Step1_GoalDraftCaptured`:
+  - `Step1_AwaitingValidation` — persisted at the moment the Gemini validation HTTP call is dispatched.
+  - `Step1_RefinementQuestionsActive` — persisted when validation passes and refinement questions are ready.
+  - `Step1_ExecutionVerified` — persisted after the Goal is committed to the production table.
+- App resume handling: if session is in `Step1_AwaitingValidation` on load, treat it identically to `Step1_GoalDraftCaptured` (show draft, allow re-submit).
+
+### P5.3 OnboardingSession Staging Fields
+- Add two nullable `string?` staging columns to `OnboardingProgressCache` (new EF migration):
+  - `ValidatedGoalJson` — stores the raw JSON returned by Gemini prompt1; cleared to `NULL` after the Goal is committed.
+  - `RefinementQuestionsJson` — stores the raw JSON array returned by Gemini prompt2; cleared to `NULL` after the Goal is committed.
+- Add corresponding advance methods to `OnboardingSession`:
+  - `AdvanceToAwaitingValidation()`
+  - `AdvanceToRefinementQuestionsActive(string validatedGoalJson, string refinementQuestionsJson)`
+  - `AdvanceToExecutionVerified()` — also nulls the two staging fields.
+
+### P5.4 GoalRefinementAnswer Domain Entity
+- New owned-collection entity on `Goal`:
+  - `RefinementAnswerId: Guid` (PK)
+  - `RankOrder: int` (1–3, display order from Gemini prompt2)
+  - `Question: string` (max 500 — question text from Gemini)
+  - `Answer: string?` (max 2000 — null until the user submits; filled at P5.9)
+- Stored in a separate SQL table `GoalRefinementAnswers` via `OwnsMany().ToTable()`.
+- `Goal` exposes `IReadOnlyCollection<GoalRefinementAnswer> RefinementAnswers`.
+- `Goal.SetRefinementAnswers(IEnumerable<(int rankOrder, string question, string? answer)>)` creates and replaces the collection.
+
+### P5.5 IGeminiGoalValidationService (Application Interface)
+- Interface defined in `LifeGrid.Application` layer (consumed by command handlers):
+  - `Task<Result<GeminiValidationResult>> ValidateGoalAsync(string rawDraft, CancellationToken ct)`
+  - `Task<Result<IReadOnlyList<RefinementQuestionDto>>> GenerateRefinementQuestionsAsync(string validatedGoalJson, CancellationToken ct)`
+- `GeminiValidationResult` is a discriminated-union record:
+  - `Valid(ValidatedGoalDto Data)` — contains parsed description, duration, deadlineDate, ambientTag
+  - `Invalid(string RetryPrompt)` — contains the conversational retry message
+- `ValidatedGoalDto` record: `Description`, `Duration`, `DeadlineDate: DateTime`, `AmbientTag`.
+- `RefinementQuestionDto` record: `RankOrder: int`, `Question: string`.
+
+### P5.6 IGoalRepository (Application Interface)
+- New interface `IGoalRepository` in `LifeGrid.Application`:
+  - `Task AddAsync(Goal goal, CancellationToken ct = default)`
+- Implementation `GoalRepository` in `LifeGrid.Infrastructure.Data.Repositories`.
+- Registered as scoped in `InfrastructureServiceExtensions`.
+
+### P5.7 TriggerGoalValidationCommand (Application Command)
+- `TriggerGoalValidationCommand : IRequest<Result<IReadOnlyList<RefinementQuestionDto>>>`.
+- Handler:
+  1. Loads active `OnboardingSession`; fails if none or `RawGoalDraft` is null/empty.
+  2. Advances session to `Step1_AwaitingValidation`, persists.
+  3. Calls `IGeminiGoalValidationService.ValidateGoalAsync(session.RawGoalDraft)`.
+  4. If `Invalid`: reverts session to `Step1_GoalDraftCaptured`, persists, returns `Result.Failure(retryPrompt)`.
+  5. If `Valid`: calls `GenerateRefinementQuestionsAsync(validatedGoalJson)`.
+  6. Advances session to `Step1_RefinementQuestionsActive(validatedGoalJson, refinementQuestionsJson)`, persists.
+  7. Returns `Result.Success(questions)`.
+
+### P5.8 FinalizeGoalCommand (Application Command)
+- `FinalizeGoalCommand(IReadOnlyList<(int RankOrder, string Answer)> UserAnswers) : IRequest<Result>`.
+- Handler:
+  1. Loads active `OnboardingSession`; fails if not in `Step1_RefinementQuestionsActive`.
+  2. Loads `UserProfile` via `IUserProfileRepository.GetSingleAsync()`; fails if null.
+  3. Deserializes `session.ValidatedGoalJson` into `ValidatedGoalDto`.
+  4. Deserializes `session.RefinementQuestionsJson` into `List<RefinementQuestionDto>`.
+  5. Creates `Goal` via `Goal.Create(userProfile.UserId, dto.Description, dto.AmbientTag, dto.Duration, dto.DeadlineDate)`.
+  6. Calls `goal.SetRefinementAnswers(...)` merging question texts with user answers.
+  7. Persists `Goal` (and its owned `RefinementAnswers`) via `IGoalRepository.AddAsync()` — Explicit Transaction Gate.
+  8. Advances session to `Step1_ExecutionVerified()` (clears staging JSON), persists.
+
+### P5.9 Explicit Transaction Gate
+- No write to `Goals` or `GoalRefinementAnswers` tables occurs before the user explicitly clicks "Confirm & Initialize".
+- The two staging columns (`ValidatedGoalJson`, `RefinementQuestionsJson`) are the only intermediate persistence between steps P5.7 and P5.9.
+
+### P5.10 GeminiGoalValidationService (Infrastructure)
+- Implements `IGeminiGoalValidationService` in `LifeGrid.Infrastructure`.
+- Uses `IChatClient` (`Microsoft.Extensions.AI`) injected via DI for all Gemini calls.
+- Retrieves API key via `ISecureStorageService.GetAsync("Gemini_Provider_Token")`.
+- Loads prompt1.txt and prompt2.txt as EmbeddedResource from `LifeGrid.Infrastructure` assembly.
+- Before sending prompt1: replaces `${USER_INPUT_TEXT}` with `rawDraft`; prepends `[Current date: {DateTime.UtcNow:MMMM d, yyyy}]` line to override the hardcoded date in the template.
+- Before sending prompt2: replaces `${VALIDATED_GOAL_JSON}` with the validated goal JSON string.
+- Parses JSON responses via `System.Text.Json`; returns typed failure on malformed JSON without throwing.
+
+### P5.11 GeminiChatClient (Infrastructure)
+- Custom `internal sealed class GeminiHttpChatClient : IChatClient` in Infrastructure.
+- Wraps `HttpClient` (registered as singleton); retrieves API key via `ISecureStorageService.GetAsync("Gemini_Provider_Token")`.
+- **Primary model:** `gemini-2.5-pro`; **fallback model:** `gemini-2.5-flash`.
+- Sends a single `user` role `ChatMessage` (`Microsoft.Extensions.AI` `ChatMessage`/`ChatResponse`); reads `candidates[0].content.parts[0].text` from the REST response.
+- **503 transparent fallback:** if the primary endpoint returns `ServiceUnavailable`, the identical request is immediately retried against the fallback model; no error is surfaced to the user.
+- **429 rate-limit handling:** fails fast (no automatic retry); parses the retry delay from the Gemini error body (`error.details[].retryDelay`) and surfaces a human-readable message including the wait time.
+- **Empty API key guard:** throws `InvalidOperationException` with a setup instruction before making any HTTP call.
+- **Non-success responses:** reads the full response body and includes it in the `HttpRequestException` message so errors are diagnosable.
+- **Empty text guard:** if a 200 response contains no text, throws `InvalidOperationException` with the candidates count.
+- Registered in DI as singleton `HttpClient` + transient `IChatClient`.
+
+### P5.12 GoalConfiguration & Migration (Infrastructure EF)
+- Add `OwnsMany(g => g.RefinementAnswers).ToTable("GoalRefinementAnswers")` with `WithOwner().HasForeignKey("GoalId")`.
+- `RefinementAnswerId` is PK; `Question` max 500; `Answer` max 2000, nullable.
+- Add `OnboardingSession.ValidatedGoalJson` and `RefinementQuestionsJson` column mappings in `OnboardingSessionConfiguration`.
+- New EF migration: `AddGoalRefinementAnswerSchemaAndSessionStagingFields`.
+
+### P5.13 Presentation — SetupViewModel Updates
+- New observable properties: `IsValidating`, `ValidationError` *(not `ValidationErrorMessage`)*, `IsRefinementActive`, `IsExecutionVerified`, `ValidatedGoalSummary`.
+- `RefinementItems: ObservableCollection<RefinementItem>` — a single unified collection where each `RefinementItem : ObservableObject` holds `RankOrder`, `Question`, and `[ObservableProperty] string _answer` (two-way bound). Replaces the originally planned separate `RefinementQuestions` + `RefinementAnswers` parallel collections.
+- `RefinementItem` defined in `LifeGrid.Presentation/ViewModels/RefinementItem.cs`.
+- `LoadAsync()` handles resumption: if `Step1_RefinementQuestionsActive`, parse session's stored `RefinementQuestionsJson` and restore `RefinementItems` without re-calling Gemini.
+- Modified `CompleteStep1Async()`: dispatches `TriggerGoalValidationCommand`; on `Failure` sets `ValidationError` (inline error, no state change); on `Success` populates `RefinementItems` and sets `IsRefinementActive = true`.
+- New `[RelayCommand] ConfirmAndInitializeAsync()`: collects `(item.RankOrder, item.Answer)` tuples from `RefinementItems`, dispatches `FinalizeGoalCommand`; on `Success` sets `IsExecutionVerified = true`.
+
+### P5.14 Presentation — SetupPage XAML Updates
+- **State A (Unstarted / retry):** Existing goal text entry. Adds inline `ValidationError` label (error color `#FFFF1B77`) above the entry, visible via `StringNotEmptyConverter` when `ValidationError` is non-empty.
+- `StringNotEmptyConverter : IValueConverter` added to `LifeGrid.Presentation/Converters/` and registered as `{StaticResource StringNotEmpty}` in `App.xaml`.
+- **State C (Validating):** Shown when `IsValidating = true`. Center-aligned loading label with `ActivityIndicator` (`Share Tech Mono`, `#58585a` text). Bottom navigation remains `IsEnabled="False"`.
+- **State D (RefinementActive):** Shows `ValidatedGoalSummary` read-only label (`DM Mono`) and a `BindableLayout` over `RefinementItems` — each item renders a `Label` (question, `Share Tech Mono`) + `Entry` (answer two-way bound to `item.Answer`, 2px corner radius). `Button` labeled `"Confirm & Initialize"` bound to `ConfirmAndInitializeCommand`.
+- **State E (ExecutionVerified):** Replaces center content with `Label`: `"Goal Refined and Stored. Ready for Phase 6 Habit Generation."` (`DM Mono`, primary color `#35f8db`).
+
+### P5.15 TDD Invariants
+- **Domain:** `OnboardingSession` step transitions (all valid progressions and guard failures); `Goal.SetRefinementAnswers` creates correct owned records.
+- **Application:** Mock `IGeminiGoalValidationService` with NSubstitute:
+  - Valid path: `TriggerGoalValidationCommand` advances session to `Step1_RefinementQuestionsActive` and returns questions.
+  - Invalid path: session reverts to `Step1_GoalDraftCaptured`; returns `Failure` with retry prompt.
+  - `FinalizeGoalCommand`: Goal added to repository only when explicitly called; session advances to `Step1_ExecutionVerified`; staging fields cleared.
+  - No production Goal write occurs if flow is abandoned before `FinalizeGoalCommand`.
+- **Infrastructure:** Mock `IChatClient` to return controlled JSON; assert malformed JSON returns `Result.Failure` without throwing; assert schema for `GoalRefinementAnswers` table (SQLite `:memory:` migration).
+- **Coverage mandate:** 100% branch coverage on all new Application command handlers and `GeminiGoalValidationService` JSON parsing paths.

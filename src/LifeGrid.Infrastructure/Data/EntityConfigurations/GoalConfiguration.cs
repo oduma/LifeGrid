@@ -36,5 +36,16 @@ public sealed class GoalConfiguration : IEntityTypeConfiguration<Goal>
             habit.Property(h => h.Description).HasMaxLength(2000);
             habit.Property(h => h.DangerLevel);
         });
+
+        builder.OwnsMany(e => e.RefinementAnswers, ra =>
+        {
+            ra.ToTable("GoalRefinementAnswers");
+            ra.WithOwner().HasForeignKey("GoalId");
+            ra.HasKey(r => r.RefinementAnswerId);
+            ra.Property(r => r.RefinementAnswerId).ValueGeneratedNever();
+            ra.Property(r => r.RankOrder);
+            ra.Property(r => r.Question).HasMaxLength(500);
+            ra.Property(r => r.Answer).HasMaxLength(2000);
+        });
     }
 }

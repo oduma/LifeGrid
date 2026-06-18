@@ -2,7 +2,8 @@ namespace LifeGrid.Domain.Goal;
 
 public sealed class Goal
 {
-    private readonly List<LinkedBadHabit> _linkedBadHabits = new();
+    private readonly List<LinkedBadHabit>       _linkedBadHabits   = new();
+    private readonly List<GoalRefinementAnswer> _refinementAnswers = new();
     private Goal() { }
 
     public static Goal Create(
@@ -28,5 +29,13 @@ public sealed class Goal
     public string     Duration     { get; private set; } = string.Empty;
     public DateTime   DeadlineDate { get; private set; }
     public GoalStatus Status       { get; private set; }
-    public IReadOnlyCollection<LinkedBadHabit> LinkedBadHabits => _linkedBadHabits.AsReadOnly();
+    public IReadOnlyCollection<LinkedBadHabit>       LinkedBadHabits   => _linkedBadHabits.AsReadOnly();
+    public IReadOnlyCollection<GoalRefinementAnswer> RefinementAnswers => _refinementAnswers.AsReadOnly();
+
+    public void SetRefinementAnswers(IEnumerable<(int rankOrder, string question, string? answer)> items)
+    {
+        _refinementAnswers.Clear();
+        foreach (var (rankOrder, question, answer) in items)
+            _refinementAnswers.Add(GoalRefinementAnswer.Create(rankOrder, question, answer));
+    }
 }

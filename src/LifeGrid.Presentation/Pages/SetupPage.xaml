@@ -10,31 +10,117 @@
     <Grid RowDefinitions="*,Auto">
 
         <ScrollView Grid.Row="0">
-            <VerticalStackLayout
-                Padding="16"
-                Spacing="16"
-                VerticalOptions="Center">
+            <VerticalStackLayout Padding="16" Spacing="16" VerticalOptions="Center">
 
-                <!-- State A: Unstarted — show input + Next -->
+                <!-- ══════════════════════════════════════════════════════ -->
+                <!-- STATE A/C/E: Goal entry, loading, or done              -->
+                <!-- Visible when NOT in the refinement questions phase     -->
+                <!-- ══════════════════════════════════════════════════════ -->
                 <VerticalStackLayout
-                    IsVisible="{Binding IsStep1Complete, Converter={StaticResource InverseBool}}"
+                    IsVisible="{Binding IsRefinementActive, Converter={StaticResource InverseBool}}"
                     Spacing="16">
+
+                    <!-- State E: Execution verified — completion message -->
                     <Label
-                        Text="Tell us about your goal."
+                        IsVisible="{Binding IsExecutionVerified}"
+                        Text="Goal Refined and Stored. Ready for Phase 6 Habit Generation."
+                        TextColor="{StaticResource Primary}"
                         Style="{StaticResource HeadlineStyle}" />
-                    <Entry
-                        Text="{Binding GoalDraft}"
-                        Placeholder="Describe your goal..." />
-                    <Button
-                        Text="Next"
-                        Command="{Binding CompleteStep1Command}" />
+
+                    <!-- State A/C: Only shown when not yet verified -->
+                    <VerticalStackLayout
+                        IsVisible="{Binding IsExecutionVerified, Converter={StaticResource InverseBool}}"
+                        Spacing="16">
+
+                        <!-- State C: Validating spinner -->
+                        <VerticalStackLayout
+                            IsVisible="{Binding IsValidating}"
+                            Spacing="12"
+                            HorizontalOptions="Center">
+
+                            <ActivityIndicator
+                                IsRunning="{Binding IsValidating}"
+                                Color="{StaticResource Primary}"
+                                HorizontalOptions="Center" />
+
+                            <Label
+                                Text="Analyzing your goal..."
+                                HorizontalOptions="Center"
+                                HorizontalTextAlignment="Center" />
+
+                        </VerticalStackLayout>
+
+                        <!-- State A: Goal entry form (hidden while validating) -->
+                        <VerticalStackLayout
+                            IsVisible="{Binding IsValidating, Converter={StaticResource InverseBool}}"
+                            Spacing="16">
+
+                            <Label
+                                Text="Tell us about your goal."
+                                Style="{StaticResource HeadlineStyle}" />
+
+                            <!-- Inline retry prompt from Gemini (shown after invalid input) -->
+                            <Label
+                                Text="{Binding ValidationError}"
+                                IsVisible="{Binding ValidationError, Converter={StaticResource StringNotEmpty}}"
+                                TextColor="{StaticResource Error}" />
+
+                            <Entry
+                                Text="{Binding GoalDraft}"
+                                Placeholder="e.g. Run a marathon in 6 months" />
+
+                            <Button
+                                Text="Next"
+                                Command="{Binding CompleteStep1Command}" />
+
+                        </VerticalStackLayout>
+
+                    </VerticalStackLayout>
+
                 </VerticalStackLayout>
 
-                <!-- State B: Step1_GoalDraftCaptured — show completion message -->
-                <Label
-                    IsVisible="{Binding IsStep1Complete}"
-                    Text="Step 1 Complete. Awaiting Phase 3 setup steps."
-                    Style="{StaticResource HeadlineStyle}" />
+                <!-- ══════════════════════════════════════════════════════ -->
+                <!-- STATE D: Refinement questions                          -->
+                <!-- ══════════════════════════════════════════════════════ -->
+                <VerticalStackLayout
+                    IsVisible="{Binding IsRefinementActive}"
+                    Spacing="16">
+
+                    <Label
+                        Text="Your Goal"
+                        Style="{StaticResource HeadlineStyle}" />
+
+                    <Label Text="{Binding ValidatedGoalSummary}" />
+
+                    <BoxView
+                        HeightRequest="1"
+                        Color="{StaticResource Secondary}"
+                        Margin="0,4" />
+
+                    <Label Text="A few quick questions to calibrate your plan:" />
+
+                    <!-- Dynamic Q&A pairs from Gemini prompt2 -->
+                    <VerticalStackLayout
+                        BindableLayout.ItemsSource="{Binding RefinementItems}"
+                        Spacing="12">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate>
+                                <VerticalStackLayout Spacing="4">
+                                    <Label Text="{Binding Question}" />
+                                    <Entry
+                                        Text="{Binding Answer, Mode=TwoWay}"
+                                        Placeholder="Your answer..." />
+                                </VerticalStackLayout>
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </VerticalStackLayout>
+
+                    <Button
+                        Text="Confirm &amp; Initialize"
+                        Command="{Binding ConfirmAndInitializeCommand}"
+                        Margin="0,8,0,0" />
+
+                </VerticalStackLayout>
 
             </VerticalStackLayout>
         </ScrollView>
