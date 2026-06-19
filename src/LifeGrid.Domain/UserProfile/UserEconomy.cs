@@ -24,4 +24,10 @@ public sealed class UserEconomy
         if (ShieldsAvailable < MaxShieldCap)
             ShieldsAvailable++;
     }
+
+    internal void GrantSurveyBonusShield()
+    {
+        MaxShieldCap     = 3;
+        ShieldsAvailable++;
+    }
 }

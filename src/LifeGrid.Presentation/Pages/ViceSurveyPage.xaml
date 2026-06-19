@@ -1,0 +1,190 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:controls="clr-namespace:LifeGrid.Presentation.Controls"
+    xmlns:vm="clr-namespace:LifeGrid.Presentation.ViewModels"
+    xmlns:vice="clr-namespace:LifeGrid.Application.Vice;assembly=LifeGrid.Application"
+    x:Class="LifeGrid.Presentation.Pages.ViceSurveyPage"
+    x:DataType="vm:ViceSurveyViewModel"
+    Title="Hidden Vices"
+    BackgroundColor="{StaticResource Background}">
+
+    <Grid RowDefinitions="*,Auto">
+
+        <ScrollView Grid.Row="0">
+            <VerticalStackLayout
+                Padding="{StaticResource ScreenMargin}"
+                Spacing="{StaticResource SectionSpacing}">
+
+                <!-- ════════════════════════════════════════════════════════ -->
+                <!-- STATE: Loading                                            -->
+                <!-- ════════════════════════════════════════════════════════ -->
+                <VerticalStackLayout
+                    IsVisible="{Binding IsLoadingState}"
+                    Spacing="12"
+                    HorizontalOptions="Center">
+
+                    <ActivityIndicator
+                        IsRunning="{Binding IsLoadingState}"
+                        Color="{StaticResource Primary}"
+                        HorizontalOptions="Center" />
+
+                    <Label
+                        Text="Preparing your survey..."
+                        HorizontalOptions="Center"
+                        HorizontalTextAlignment="Center" />
+
+                </VerticalStackLayout>
+
+                <!-- ════════════════════════════════════════════════════════ -->
+                <!-- STATE: Questions                                          -->
+                <!-- ════════════════════════════════════════════════════════ -->
+                <VerticalStackLayout
+                    IsVisible="{Binding IsQuestionsState}"
+                    Spacing="{StaticResource SectionSpacing}">
+
+                    <!-- Progress -->
+                    <VerticalStackLayout Spacing="4">
+                        <Label Text="{Binding ProgressText}" />
+                        <ProgressBar
+                            Progress="{Binding Progress}"
+                            ProgressColor="{StaticResource Primary}" />
+                    </VerticalStackLayout>
+
+                    <BoxView
+                        HeightRequest="1"
+                        Color="{StaticResource Secondary}"
+                        Margin="0,4" />
+
+                    <Label
+                        Text="{Binding QuestionText}"
+                        Style="{StaticResource HeadlineStyle}" />
+
+                    <!-- Multiple choice options -->
+                    <VerticalStackLayout
+                        IsVisible="{Binding IsMultipleChoice}"
+                        BindableLayout.ItemsSource="{Binding OptionItems}"
+                        Spacing="8">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate x:DataType="vm:OptionItemViewModel">
+                                <Border
+                                    Padding="12,10"
+                                    StrokeShape="RoundRectangle 2"
+                                    StrokeThickness="1"
+                                    Stroke="{StaticResource SecondaryBrush}">
+                                    <Border.Triggers>
+                                        <DataTrigger
+                                            TargetType="Border"
+                                            Binding="{Binding IsSelected}"
+                                            Value="True">
+                                            <Setter Property="Stroke"
+                                                    Value="{StaticResource PrimaryBrush}" />
+                                            <Setter Property="BackgroundColor"
+                                                    Value="{StaticResource Surface}" />
+                                        </DataTrigger>
+                                    </Border.Triggers>
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <Label
+                                            Grid.Column="0"
+                                            Text="{Binding Text}"
+                                            VerticalOptions="Center" />
+                                        <Label
+                                            Grid.Column="1"
+                                            Text="✓"
+                                            IsVisible="{Binding IsSelected}"
+                                            TextColor="{StaticResource Primary}"
+                                            VerticalOptions="Center" />
+                                    </Grid>
+                                    <Border.GestureRecognizers>
+                                        <TapGestureRecognizer Command="{Binding SelectCommand}" />
+                                    </Border.GestureRecognizers>
+                                </Border>
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </VerticalStackLayout>
+
+                    <!-- Open-ended text input -->
+                    <Editor
+                        IsVisible="{Binding IsOpenEnded}"
+                        Text="{Binding FreeTextAnswer, Mode=TwoWay}"
+                        Placeholder="Your answer..."
+                        MinimumHeightRequest="100"
+                        AutoSize="TextChanges" />
+
+                    <Button
+                        Text="{Binding ActionButtonLabel}"
+                        Command="{Binding NextCommand}"
+                        Margin="0,8,0,0" />
+
+                </VerticalStackLayout>
+
+                <!-- ════════════════════════════════════════════════════════ -->
+                <!-- STATE: Analyzing                                          -->
+                <!-- ════════════════════════════════════════════════════════ -->
+                <VerticalStackLayout
+                    IsVisible="{Binding IsAnalyzingState}"
+                    Spacing="12"
+                    HorizontalOptions="Center">
+
+                    <ActivityIndicator
+                        IsRunning="{Binding IsAnalyzingState}"
+                        Color="{StaticResource Primary}"
+                        HorizontalOptions="Center" />
+
+                    <Label
+                        Text="Analyzing your behavioral profile..."
+                        HorizontalOptions="Center"
+                        HorizontalTextAlignment="Center" />
+
+                </VerticalStackLayout>
+
+                <!-- ════════════════════════════════════════════════════════ -->
+                <!-- STATE: Complete                                           -->
+                <!-- ════════════════════════════════════════════════════════ -->
+                <VerticalStackLayout
+                    IsVisible="{Binding IsCompleteState}"
+                    Spacing="{StaticResource SectionSpacing}">
+
+                    <Label
+                        Text="Hidden Vices Identified"
+                        Style="{StaticResource HeadlineStyle}" />
+
+                    <Label Text="Your behavioral profile has been linked to your active goals. A bonus shield has been granted." />
+
+                    <BoxView
+                        HeightRequest="1"
+                        Color="{StaticResource Secondary}"
+                        Margin="0,4" />
+
+                    <CollectionView ItemsSource="{Binding DetectedVices}">
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="vice:DetectedViceDto">
+                                <VerticalStackLayout Padding="0,6" Spacing="4">
+                                    <Label
+                                        Text="{Binding Description}"
+                                        FontAttributes="Bold"
+                                        TextColor="{Binding DangerLevel, Converter={StaticResource DangerLevelToColor}}" />
+                                    <Label
+                                        Text="{Binding GoalDescription, StringFormat='Goal: {0}'}"
+                                        FontSize="Small" />
+                                </VerticalStackLayout>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+
+                    <Button
+                        Text="Accept &amp; Return"
+                        Command="{Binding AcceptAndReturnCommand}"
+                        Margin="0,8,0,0" />
+
+                </VerticalStackLayout>
+
+            </VerticalStackLayout>
+        </ScrollView>
+
+        <controls:AdBannerView Grid.Row="1" />
+
+    </Grid>
+
+</ContentPage>

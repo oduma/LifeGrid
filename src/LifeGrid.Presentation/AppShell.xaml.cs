@@ -12,6 +12,7 @@ public partial class AppShell : Shell
         HudControl.BindingContext = hudViewModel;
         Routing.RegisterRoute("create-goal", typeof(CreateGoalPage));
         Routing.RegisterRoute("user-setup",  typeof(UserSetupPage));
+        Routing.RegisterRoute("vice-survey", typeof(ViceSurveyPage));
 
         viewModel.PropertyChanged += (_, e) =>
         {

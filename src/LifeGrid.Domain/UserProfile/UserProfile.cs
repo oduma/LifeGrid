@@ -13,11 +13,19 @@ public sealed class UserProfile
         ActiveStates = UserActiveStates.CreateDefault()
     };
 
-    public Guid                          UserId       { get; private set; }
-    public int                           CurrentLevel { get; private set; }
-    public UserEconomy                   Economy      { get; private set; } = null!;
-    public UserActiveStates              ActiveStates { get; private set; } = null!;
-    public IReadOnlyCollection<UserBadge> Badges      => _badges.AsReadOnly();
+    public Guid                           UserId                 { get; private set; }
+    public int                            CurrentLevel           { get; private set; }
+    public UserEconomy                    Economy                { get; private set; } = null!;
+    public UserActiveStates               ActiveStates           { get; private set; } = null!;
+    public bool                           IsViceSurveyCompleted  { get; private set; }
+    public IReadOnlyCollection<UserBadge> Badges                 => _badges.AsReadOnly();
 
     public void GrantBonusShield() => Economy.GrantShield();
+
+    public void GrantSurveyBonusShield()
+    {
+        if (IsViceSurveyCompleted) return;
+        Economy.GrantSurveyBonusShield();
+        IsViceSurveyCompleted = true;
+    }
 }

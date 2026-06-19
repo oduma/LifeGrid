@@ -59,9 +59,9 @@ The Goal Success Score is calculated strictly on a week-by-week basis to prevent
 This workflow functions as a preventative risk-assessment layer, operating alongside or immediately following the core setup to identify pre-existing behavioral patterns that threaten goal success.
 
 * **Behavioral Survey Interrogation:** The user is presented with a concise, targeted survey designed to uncover default routines, stress-response behaviors, and daily time-sinks.
-* **Prompt to generate the questions** <file path=".\assets\prompts\prompt3.txt">
+* **Prompt to generate the questions** <file path=".\assets\prompts\prompt3.1.txt">
 * **wireframes** <file path=".\assets\wireframes\wf3.png"> <file path=".\assets\wireframes\wf4.png">
-* **AI Analysis & Extraction:** The AI processes the survey responses to explicitly identify and define the user's "Hidden Vices" or bad habits.
+* **AI Analysis & Extraction:** The AI processes the survey responses to explicitly identify and define the user's "Hidden Vices" or bad habits. Using<file path=".\assets\prompts\prompt3.2.txt">
 * **Goal Linkage:** The AI cross-references the extracted bad habits against the user's specific Stated Goals, drawing direct causal links where a vice directly impedes a goal.
 * **Danger Level Quantification:** The AI assigns a quantified **Goal Danger Level (Scale: 1 to 5)** to each linked bad habit, assessing its potential impact on the timeline and success score of the goal attached to.
 
@@ -265,8 +265,8 @@ The engine logically divides the calendar week into two distinct blocks: First P
 ### 4.2 Goal Level Interactions
 #### 4.2.1 Reduce the Load or Give Up (Overwhelmed State)
 The user triggers an explicit "Overwhelmed" action for a specific goal.
-* **Option A: Abandon Goal:** The target goal and all associated future habits are permanently cancelled. The engine revokes **100% of the XP** historically earned through that specific goal, **plus an additional flat penalty of -100 XP**.
-* **Option B: Recalculate Schedule (Extend Deadline):** The user provides a text comment. The AI extends the goal's overall `Deadline Date` and `Duration` by exactly **25%** and recalculates the remaining schedule. The user incurs a flat penalty of **-100 XP**.
+* **Option A: Abandon Goal:** The target goal and all associated future habits are permanently cancelled. The engine revokes **100% of the XP** historically earned through that specific goal, **plus an additional flat penalty of -100 XP**. <file path="docs\specs\assets\wireframes\wf12.png">
+* **Option B: Recalculate Schedule (Extend Deadline):** The user provides a text comment. The AI extends the goal's overall `Deadline Date` and `Duration` by exactly **25%** and recalculates the remaining schedule, by passing it through <file path="docs\specs\assets\prompts\prompt2.1.txt"> and <file path="docs\specs\assets\prompts\prompt2.2.txt">. Passing the existing information with the extended deadline. The user incurs a flat penalty of **-100 XP**.<file path="docs\specs\assets\wireframes\wf13.png">
 
 #### 4.2.2 Automated Overwhelmed Trigger (Progress Degradation)
 * **Trigger:** Goal Progression (GP) falls below **50% for two consecutive weeks**.

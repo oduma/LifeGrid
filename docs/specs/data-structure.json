@@ -13,6 +13,7 @@
       "Double_XP_Mode": "Boolean",
       "Double_XP_Expiry": "DateTime"
     },
+    "Is_Vice_Survey_Completed": "Boolean // Phase 9: single-use lifecycle flag; true after Hidden Vices survey is submitted and persisted",
     "Trophy_Room_Badges": [
       {
         "BadgeID": "Guid",
@@ -56,7 +57,8 @@
     "Raw_Goal_Draft": "String (Nullable)",
     "Last_Active_Timestamp": "DateTime",
     "Validated_Goal_Json": "String? // Phase 5 staging: raw JSON returned by Gemini prompt1; cleared to NULL after Goal is committed",
-    "Refinement_Questions_Json": "String? // Phase 5 staging: raw JSON array returned by Gemini prompt2; cleared to NULL after Goal is committed"
+    "Refinement_Questions_Json": "String? // Phase 5 staging: raw JSON array returned by Gemini prompt2; cleared to NULL after Goal is committed",
+    "Refinement_Answers_Json": "String? // Phase 6 bug-fix: persists user's typed refinement answers across process restarts; cleared to NULL after Goal is committed"
   },
 
   "Week": {

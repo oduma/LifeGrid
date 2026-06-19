@@ -38,4 +38,11 @@ public sealed class Goal
         foreach (var (rankOrder, question, answer) in items)
             _refinementAnswers.Add(GoalRefinementAnswer.Create(rankOrder, question, answer));
     }
+
+    public void SetLinkedBadHabits(IEnumerable<(string description, int dangerLevel)> items)
+    {
+        _linkedBadHabits.Clear();
+        foreach (var (description, dangerLevel) in items)
+            _linkedBadHabits.Add(LinkedBadHabit.Create(description, dangerLevel));
+    }
 }

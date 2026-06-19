@@ -12,6 +12,7 @@ public sealed class UserProfileConfiguration : IEntityTypeConfiguration<UserProf
         builder.HasKey(e => e.UserId);
         builder.Property(e => e.UserId).ValueGeneratedNever();
         builder.Property(e => e.CurrentLevel);
+        builder.Property(e => e.IsViceSurveyCompleted);
 
         builder.OwnsOne(e => e.Economy, economy =>
         {

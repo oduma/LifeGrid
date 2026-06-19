@@ -1588,3 +1588,228 @@ All acceptance criteria met. `dotnet build LifeGrid.slnx` → **Build succeeded.
 | Application | 50 | All passed |
 | Infrastructure | 46 | All passed |
 | **Total** | **157** | **All passed** |
+
+---
+
+# Phase 9 — Hidden Vices Survey & Analysis Pipeline
+
+**Source:** `docs/requirements/Phase-9-requirements.md`  
+**Design authority refs:** `docs/specs/functional-requirements.md` §1.7, §1.8, `docs/specs/assets/prompts/prompt3.1.txt`, `docs/specs/assets/prompts/prompt3.2.txt`, `docs/specs/style-guide.md`, `docs/specs/screen-layout-specification.md`
+
+---
+
+## Clarifications (agreed 2026-06-19)
+
+| # | Question | Answer |
+|---|---|---|
+| Q1 | Entry point scope | `UserSetupPage` stub only in Phase 9; Interaction Hub button deferred to a later phase |
+| Q2 | Goal injection for Loop 1 | All active goals passed as JSON context to prompt3.1 |
+| Q3 | Completion screen rendering | Single `ViceSurveyPage` manages all states (Loading → Questions → Analyzing → Complete) via ViewModel state machine |
+| Q4 | Button labels | "Next" on intermediate questions; "Analyze Profile" on the final question (as written in Phase 9 spec) |
+
+---
+
+## P9.1 Single-Use Lifecycle (Domain)
+
+- Add `bool IsViceSurveyCompleted` (private set) to the `UserProfile` aggregate. Defaults to `false`.
+- Add `public void GrantSurveyBonusShield()` to `UserProfile`:
+  - Delegates to `Economy.GrantSurveyBonusShield()`.
+  - Sets `IsViceSurveyCompleted = true`.
+  - If `IsViceSurveyCompleted` is already `true`, the method is a no-op (idempotent guard).
+- Add `internal void GrantSurveyBonusShield()` to `UserEconomy`:
+  - Sets `MaxShieldCap = 3` (cap expansion — overrides standard cap of 2).
+  - Increments `ShieldsAvailable` by 1 (cap is now 3, so this is always safe on first call).
+- Add `public void SetLinkedBadHabits(IEnumerable<(string description, int dangerLevel)> items)` to the `Goal` aggregate:
+  - Clears `_linkedBadHabits` list.
+  - Creates a new `LinkedBadHabit` value object per item (same factory approach as `LinkedBadHabit.Create()`).
+
+## P9.2 Gemini Vice Survey Service Interface (Application)
+
+New interface `IGeminiViceSurveyService` in `LifeGrid.Application.Vice`:
+
+```csharp
+Task<Result<IReadOnlyList<SurveyQuestionDto>>> GenerateQuestionsAsync(
+    string goalsContextJson, CancellationToken ct = default);
+
+Task<Result<IReadOnlyList<DetectedViceDto>>> AnalyzeAnswersAsync(
+    string answersJson, string goalsJson, CancellationToken ct = default);
+```
+
+DTOs (all in `LifeGrid.Application.Vice`):
+- `SurveyQuestionDto` record: `Id (string)`, `Type (string)`, `QuestionText (string)`, `Options (IReadOnlyList<string>?)`
+- `SurveyAnswerDto` record: `QuestionId (string)`, `AnswerText (string)`
+- `DetectedViceDto` record: `Description (string)`, `DangerLevel (int)`, `GoalDescription (string)`
+
+## P9.3 MediatR Commands & Queries (Application)
+
+### P9.3.1 `LaunchViceSurveyCommand`
+- `IRequest<Result>` in `LifeGrid.Application.Vice`.
+- Handler: loads `UserProfile` via `IUserProfileRepository.GetSingleAsync()`.
+  - If null → `Result.Success()` (new user, survey not yet taken).
+  - If `profile.IsViceSurveyCompleted == true` → `Result.Failure("already_completed")`.
+  - Else → `Result.Success()`.
+- Presentation interprets Success as "navigate" and Failure as "show already-completed message."
+
+### P9.3.2 `GetViceSurveyQuestionsQuery`
+- `IRequest<Result<IReadOnlyList<SurveyQuestionDto>>>` in `LifeGrid.Application.Vice`.
+- Handler:
+  1. Loads `UserProfile`; if null, `goalsContextJson = "[]"`.
+  2. Loads all active goals via `IGoalRepository.GetAllByUserIdAsync(profile.UserId)`.
+  3. Serializes goal descriptions, durations, and deadlines as JSON array.
+  4. Calls `IGeminiViceSurveyService.GenerateQuestionsAsync(goalsContextJson)`.
+  5. Returns result.
+
+### P9.3.3 `SubmitViceSurveyCommand`
+- `SubmitViceSurveyCommand(IReadOnlyList<SurveyAnswerDto> Answers) : IRequest<Result<IReadOnlyList<DetectedViceDto>>>`.
+- Handler:
+  1. Loads `UserProfile`; fails if null. Returns failure if `IsViceSurveyCompleted == true` (idempotency).
+  2. Loads all goals via `IGoalRepository.GetAllByUserIdAsync(profile.UserId)`.
+  3. Serializes `Answers` to JSON. Serializes goals to JSON.
+  4. Calls `IGeminiViceSurveyService.AnalyzeAnswersAsync(answersJson, goalsJson)`.
+  5. If `Result.IsFailure` → returns failure (no DB write).
+  6. For each returned `DetectedViceDto`, groups by `GoalDescription` and matches to the corresponding `Goal` aggregate (case-insensitive description match); calls `goal.SetLinkedBadHabits(vices)`.
+  7. Calls `profile.GrantSurveyBonusShield()` — atomically marks complete, expands cap, adds shield.
+  8. Calls `IUnitOfWork.CommitAsync()` — saves all goal mutations and profile mutation in one transaction.
+  9. Returns `Result.Success(allDetectedVices)`.
+
+## P9.4 Gemini Vice Survey Service (Infrastructure)
+
+`GeminiViceSurveyService` in `LifeGrid.Infrastructure.AI`:
+- Loads `prompt3.1.txt` and `prompt3.2.txt` as embedded resources from `LifeGrid.Infrastructure.AI.Prompts.*`.
+- Both `.txt` files are added to `AI/Prompts/` directory and declared as `<EmbeddedResource>` in `LifeGrid.Infrastructure.csproj`.
+- `GenerateQuestionsAsync(string goalsContextJson)`:
+  - Builds user message: `$"[Current date: {today}]\n\n{Prompt31Template}\n\nUser's Active Goals:\n{goalsContextJson}"`.
+  - Calls `IChatClient.GetResponseAsync(...)`. Strips code fences from response.
+  - Parses JSON root object; extracts `questions` array into `SurveyQuestionDto[]`.
+  - Returns `Result.Failure` on `HttpRequestException` (rate limit or network) and on `JsonException`.
+- `AnalyzeAnswersAsync(string answersJson, string goalsJson)`:
+  - Builds user message by replacing `${USER_SURVEY_ANSWERS_JSON}` and `${USER_GOALS_JSON}` in `Prompt32Template`.
+  - Calls `IChatClient.GetResponseAsync(...)`. Strips code fences.
+  - Parses JSON root array. For each goal element, extracts `data.description` and `bad_habits` array.
+  - Flattens into `DetectedViceDto[]` (one entry per vice, carrying the parent `GoalDescription`).
+  - Returns `Result.Failure` on parse error.
+- Registered as `AddTransient<IGeminiViceSurveyService, GeminiViceSurveyService>()` in `InfrastructureServiceExtensions`.
+
+## P9.5 Database Migration (Infrastructure)
+
+- `UserProfileConfiguration`: add `builder.Property(e => e.IsViceSurveyCompleted)` mapping (column in `UserProfiles` table).
+- New EF Core migration: `Phase9_AddViceSurveyCompleted` — adds a single non-nullable `bit`/`INTEGER` column `IsViceSurveyCompleted` with default value `0` to `UserProfiles`.
+- The `GoalLinkedBadHabits` table already exists (Phase 5). No additional migration required for it.
+
+## P9.6 Survey UI — ViceSurveyViewModel (Presentation)
+
+`ViceSurveyViewModel` (`src/LifeGrid.Presentation/ViewModels/ViceSurveyViewModel.cs`):
+- **`public` state enum** `ViceSurveyState { Loading, Questions, Analyzing, Complete }`. Must be `public` so the CommunityToolkit.Mvvm source generator can emit a `public State` property without an accessibility mismatch.
+- Constructor: `ViceSurveyViewModel(IMediator mediator, HudViewModel hud)` — `HudViewModel` (singleton) injected to enable immediate HUD refresh on survey completion.
+- `[ObservableProperty]` with `[NotifyPropertyChangedFor(nameof(IsLoadingState), nameof(IsQuestionsState), nameof(IsAnalyzingState), nameof(IsCompleteState))]` on `_state`.
+- Computed booleans: `IsLoadingState`, `IsQuestionsState`, `IsAnalyzingState`, `IsCompleteState` (read-only properties checking `_state`).
+- Observable properties: `ProgressText (string)`, `Progress (double)`, `QuestionText (string)`, `IsMultipleChoice (bool)` (with `[NotifyPropertyChangedFor(nameof(IsOpenEnded))]`), `FreeTextAnswer (string)`, `IsFinalQuestion (bool)`, `ActionButtonLabel (string)`, `DetectedVices (IReadOnlyList<DetectedViceDto>)`.
+- `IsOpenEnded` — computed `bool` returning `!IsMultipleChoice`.
+- `ObservableCollection<OptionItemViewModel> OptionItems` — populated by `ShowQuestion`; each item is an `OptionItemViewModel(text, onSelected)` where `onSelected` callback clears all other items' `IsSelected` and sets `_selectedOption`.
+- `OptionItemViewModel` (`src/LifeGrid.Presentation/ViewModels/OptionItemViewModel.cs`) — `ObservableObject` with `[ObservableProperty] bool _isSelected`, `string Text`, `IRelayCommand SelectCommand` (invokes `Action<OptionItemViewModel>` callback).
+- Private fields: `IReadOnlyList<SurveyQuestionDto> _questions`, `int _currentIndex`, `string? _selectedOption`, `List<SurveyAnswerDto> _collectedAnswers`.
+- `LoadAsync()` (called from `OnAppearing`):
+  - Sets `State = Loading`.
+  - Sends `GetViceSurveyQuestionsQuery`.
+  - On success: stores questions, calls `ShowQuestion(0)`, sets `State = Questions`.
+  - On failure or empty result: navigates back via `Shell.Current.GoToAsync("..")`.
+- `ShowQuestion(int index)`:
+  - Clears and repopulates `OptionItems` with new `OptionItemViewModel` instances (uses `OnOptionSelected` callback).
+  - Populates `QuestionText`, `IsMultipleChoice`, clears `_selectedOption`/`FreeTextAnswer`.
+  - `IsFinalQuestion = (index == _questions.Count - 1)`.
+  - `ActionButtonLabel = IsFinalQuestion ? "Analyze Profile" : "Next"`.
+  - `ProgressText = $"Question {index + 1} of {_questions.Count}"`.
+  - `Progress = (index + 1.0) / _questions.Count` (reaches 1.0 on final question).
+- `OnOptionSelected(OptionItemViewModel selected)` — sets all items `IsSelected = false`, then `selected.IsSelected = true`, stores `_selectedOption = selected.Text`.
+- `[RelayCommand] NextAsync()`:
+  - Collects current answer (from `_selectedOption` if multiple-choice, else `FreeTextAnswer`).
+  - Appends `SurveyAnswerDto` to `_collectedAnswers`.
+  - If not final: `ShowQuestion(_currentIndex + 1)`.
+  - If final: sets `State = Analyzing`, sends `SubmitViceSurveyCommand(_collectedAnswers)`, on success sets `DetectedVices`, sets `State = Complete`, calls `await hud.LoadAsync()` (immediate HUD refresh — shield counts update on the completion screen itself, before the user navigates away); on failure navigates back.
+- `[RelayCommand] AcceptAndReturnAsync()` — `Shell.Current.GoToAsync("..")`.
+
+## P9.7 Survey UI — ViceSurveyPage (Presentation)
+
+`ViceSurveyPage.xaml` — single page, four visibility-gated content panels stacked in a `Grid`:
+
+**Loading panel** (`IsVisible="{Binding IsLoadingState}"`):
+- `ActivityIndicator` (Primary color, centered).
+- `Label` "Generating your personalized survey..." (Share Tech Mono, OnSurface, centered).
+
+**Questions panel** (`IsVisible="{Binding IsQuestionsState}"`):
+- **Progress section:** `Label` bound to `ProgressText` (Share Tech Mono, small, OnSurface); `ProgressBar` with `Progress="{Binding Progress}"` and `ProgressColor="{StaticResource Primary}"`.
+- **Question content:** `Label` bound to `QuestionText` (DM Mono, headline weight, OnSurface, wrapping).
+- **Multiple-choice area** (`IsVisible="{Binding IsMultipleChoice}"`): `BindableLayout` inside `VerticalStackLayout`; each item is a tappable `HorizontalStackLayout` with a circle indicator `Label` + option text `Label`; `SelectOptionCommand` fires on tap; selected option highlighted in Primary color via `DataTrigger`.
+- **Open-ended area** (`IsVisible="{Binding IsOpenEnded}"` where `IsOpenEnded = !IsMultipleChoice`): `Editor` (2px corner radius, `CornerRadius=2`, OnSurface text, auto-grow) two-way bound to `FreeTextAnswer`.
+- **Action button:** `Button` `Text="{Binding ActionButtonLabel}"` (Primary background, OnPrimary text, 2px radius), `Command="{Binding NextCommand}"`.
+
+**Analyzing panel** (`IsVisible="{Binding IsAnalyzingState}"`):
+- `ActivityIndicator` (Primary color).
+- `Label` "Analyzing your behavioral patterns..." (Share Tech Mono, OnSurface, centered).
+
+**Complete panel** (`IsVisible="{Binding IsCompleteState}"`):
+- `Label` "Hidden Vices Identified" (DM Mono, headline, Primary color).
+- `CollectionView` bound to `DetectedVices`; each item: `Label` for `Description` (Share Tech Mono, OnSurface) + `Label` for danger level (Share Tech Mono; Error color for DangerLevel ≥ 4, Primary for DangerLevel ≤ 3).
+- `Button` "Accept & Return" (Primary background, 2px radius), `Command="{Binding AcceptAndReturnCommand}"`.
+
+## P9.8 Navigation & DI Wiring (Presentation)
+
+- `AppShell.xaml.cs`: register route `"vice-survey"` → `ViceSurveyPage`.
+- `UserSetupViewModel`:
+  - Add `[ObservableProperty] bool _isViceSurveyAvailable = true`.
+  - `LoadAsync()` sends `LaunchViceSurveyCommand` as a pure availability check (no side effects); sets `IsViceSurveyAvailable = result.IsSuccess`. This means when `OnAppearing` fires after returning from the survey, the flag is refreshed to `false` and the button hides automatically.
+  - `DetectHiddenVicesAsync()` — simplified to a single unconditional `Shell.Current.GoToAsync("vice-survey")` (no alert path; button is only visible when available, so the command can only be invoked when navigation is valid).
+  - **Correction (post-implementation):** The "already completed" `DisplayAlert` path is **removed**. The "Detect Hidden Vices" button is hidden via `IsVisible="{Binding IsViceSurveyAvailable}"` instead. There is no UI affordance for a completed survey anywhere in the system; the user sees the feature disappear rather than an error.
+- `UserSetupPage.xaml`: `<Button Text="Detect Hidden Vices" IsVisible="{Binding IsViceSurveyAvailable}" Command="{Binding DetectHiddenVicesCommand}" />`.
+- `App.xaml`: register `DangerLevelToColorConverter` as `{StaticResource DangerLevelToColor}`. Converter returns `Error` color for `DangerLevel ≥ 4`, `Primary` color for `≤ 3`.
+- `MauiProgram.cs`: register `ViceSurveyViewModel` (Transient) and `ViceSurveyPage` (Transient).
+- `IsOpenEnded` convenience bool: computed property on `ViceSurveyViewModel` returning `!IsMultipleChoice`; driven by `[NotifyPropertyChangedFor]` on `_isMultipleChoice`.
+
+## P9.9 TDD Invariants
+
+### Domain Tests
+| Test | Assert |
+|---|---|
+| `UserProfile_GrantSurveyBonusShield_SetsIsViceSurveyCompleted` | `IsViceSurveyCompleted == true` |
+| `UserProfile_GrantSurveyBonusShield_ExpandsCapToThree` | `Economy.MaxShieldCap == 3` |
+| `UserProfile_GrantSurveyBonusShield_GrantsOneShield` | `Economy.ShieldsAvailable == 1` |
+| `UserProfile_GrantSurveyBonusShield_Idempotent` | Calling twice: `ShieldsAvailable` still 1 (no-op on second call) |
+| `Goal_SetLinkedBadHabits_ReplacesCollection` | After call with 2 items, `LinkedBadHabits.Count == 2` |
+| `Goal_SetLinkedBadHabits_EmptyList_ClearsCollection` | After call with empty, `LinkedBadHabits.Count == 0` |
+
+### Application Tests (`LifeGrid.Application.Tests/Vice/`)
+| Test | Assert |
+|---|---|
+| `LaunchViceSurvey_AlreadyCompleted_ReturnsFailure` | `Result.IsSuccess == false` |
+| `LaunchViceSurvey_NotCompleted_ReturnsSuccess` | `Result.IsSuccess == true` |
+| `LaunchViceSurvey_NoProfile_ReturnsSuccess` | `Result.IsSuccess == true` (null profile treated as not-completed) |
+| `GetViceSurveyQuestions_CallsGeminiWithAllGoalDescriptions` | `IGeminiViceSurveyService.GenerateQuestionsAsync` called once with a JSON string containing all goal descriptions |
+| `GetViceSurveyQuestions_GeminiFailure_PropagatesFailure` | `Result.IsSuccess == false` |
+| `SubmitViceSurvey_HappyPath_SetsLinkedBadHabitsOnAllMatchingGoals` | After handler: each mocked goal received `SetLinkedBadHabits` with matching vices |
+| `SubmitViceSurvey_HappyPath_GrantsBonusShield` | After handler: `profile.IsViceSurveyCompleted == true`, `Economy.MaxShieldCap == 3` |
+| `SubmitViceSurvey_HappyPath_CommitsOnce` | `IUnitOfWork.CommitAsync` called exactly once |
+| `SubmitViceSurvey_HappyPath_ReturnsDetectedVices` | `Result.Value` is non-empty list of `DetectedViceDto` |
+| `SubmitViceSurvey_GeminiFailure_NoCommit` | `IUnitOfWork.CommitAsync` never called |
+| `SubmitViceSurvey_AlreadyCompleted_ReturnsFailure` | `Result.IsSuccess == false`; no Gemini call |
+
+### Infrastructure Tests (`LifeGrid.Infrastructure.Tests/AI/`)
+| Test | Assert |
+|---|---|
+| `GeminiViceSurveyService_GenerateQuestions_AllGoalsInPrompt` | The string passed to `IChatClient` contains each goal description |
+| `GeminiViceSurveyService_GenerateQuestions_ValidJson_ReturnsQuestions` | Returns correct count of `SurveyQuestionDto` items |
+| `GeminiViceSurveyService_GenerateQuestions_MalformedJson_ReturnsFailure` | `Result.IsSuccess == false` without throwing |
+| `GeminiViceSurveyService_AnalyzeAnswers_PlaceholdersSubstituted` | Prompt sent to `IChatClient` does not contain literal `${USER_SURVEY_ANSWERS_JSON}` |
+| `GeminiViceSurveyService_AnalyzeAnswers_ValidJson_ReturnsFlatViceList` | Returns correct `DetectedViceDto` list with `GoalDescription` populated |
+| `GeminiViceSurveyService_AnalyzeAnswers_MalformedJson_ReturnsFailure` | `Result.IsSuccess == false` without throwing |
+| `GeminiViceSurveyService_RateLimit_ReturnsFailure` | `Result.IsSuccess == false` with error message |
+
+## P9.10 Acceptance Criteria
+
+- `dotnet build LifeGrid.slnx` → 0 errors, 0 warnings.
+- `dotnet test` → all 157 existing tests pass + all new Phase 9 tests pass (estimated ~24 new tests).
+- Tapping "Detect Hidden Vices" on `UserSetupPage` when not yet completed: navigates to `ViceSurveyPage`, loading state appears, then questions render.
+- Questions panel: progress bar advances correctly (reaches 100% on final question); multiple-choice shows tappable `OptionItemViewModel` items; open-ended shows multi-line editor.
+- On final question, button label reads "Analyze Profile"; tapping transitions to Analyzing state.
+- After analysis: Completion panel lists detected vices with danger-level coloring; HUD shield counts update immediately (on the Complete screen) without requiring app restart; "Accept & Return" navigates back to `UserSetupPage`.
+- After completion: `UserProfile.IsViceSurveyCompleted == true`; `MaxShieldCap == 3`; `ShieldsAvailable` incremented by 1; each goal has `LinkedBadHabits` populated.
+- **Correction (post-implementation):** After survey completion the "Detect Hidden Vices" button is **no longer visible** anywhere in the system. `UserSetupPage.LoadAsync()` re-checks availability on every `OnAppearing`; button hides permanently once `IsViceSurveyCompleted == true`. There is no alert, no disabled state — the button simply disappears.

@@ -3,6 +3,7 @@ using LifeGrid.Application.Goal;
 using LifeGrid.Application.Habit;
 using LifeGrid.Application.Onboarding;
 using LifeGrid.Application.UserProfile;
+using LifeGrid.Application.Vice;
 using LifeGrid.Application.Week;
 using LifeGrid.Infrastructure.AI;
 using LifeGrid.Infrastructure.Data;
@@ -38,6 +39,7 @@ public static class InfrastructureServiceExtensions
         services.AddTransient<IChatClient, GeminiHttpChatClient>();
         services.AddTransient<IGeminiGoalValidationService, GeminiGoalValidationService>();
         services.AddTransient<IGeminiHabitGenerationService, GeminiHabitGenerationService>();
+        services.AddTransient<IGeminiViceSurveyService, GeminiViceSurveyService>();
         services.AddTransient<IFactoryResetService, FactoryResetService>();
 
         return services;
