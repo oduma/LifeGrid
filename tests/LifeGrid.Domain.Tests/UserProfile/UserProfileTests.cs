@@ -57,4 +57,27 @@ public sealed class UserProfileTests
         var profile = UserProfileEntity.Create();
         profile.Badges.Should().BeEmpty();
     }
+
+    [Fact]
+    public void GrantBonusShield_IncrementsShieldsAvailable()
+    {
+        var profile = UserProfileEntity.Create();
+        profile.Economy.ShieldsAvailable.Should().Be(0);
+
+        profile.GrantBonusShield();
+
+        profile.Economy.ShieldsAvailable.Should().Be(1);
+    }
+
+    [Fact]
+    public void GrantBonusShield_DoesNotExceedMaxShieldCap()
+    {
+        var profile = UserProfileEntity.Create();
+        // MaxShieldCap defaults to 2; fill to cap then try once more
+        profile.GrantBonusShield();
+        profile.GrantBonusShield();
+        profile.GrantBonusShield(); // should be a no-op
+
+        profile.Economy.ShieldsAvailable.Should().Be(2);
+    }
 }

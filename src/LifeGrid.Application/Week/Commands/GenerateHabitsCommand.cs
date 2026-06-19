@@ -45,6 +45,9 @@ public sealed class GenerateHabitsCommandHandler(
         if (goal is null)
             return Result<HabitGenerationOutcome>.Failure("No goal found for the current user.");
 
+        var activeGoalCount = await goalRepository.GetActiveCountAsync(userProfile.UserId, cancellationToken);
+        var isFirstGoal     = activeGoalCount == 1;
+
         var serviceResult = await habitGenerationService.GenerateScheduleAsync(
             goal.Description,
             goal.DeadlineDate.ToString("yyyy-MM-dd"),
@@ -80,6 +83,9 @@ public sealed class GenerateHabitsCommandHandler(
 
             await habitRepository.AddRangeAsync(habits, cancellationToken);
         }
+
+        if (isFirstGoal)
+            userProfile.GrantBonusShield();
 
         await unitOfWork.CommitAsync(cancellationToken);
 

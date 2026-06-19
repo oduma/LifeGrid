@@ -232,6 +232,52 @@ public sealed class GenerateHabitsCommandTests
         session.CurrentStep.Should().Be(OnboardingStep.Step6_HabitsGenerated);
     }
 
+    // ── shield bonus ─────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task FirstGoal_GrantsBonusShield()
+    {
+        var profile = UserProfileEntity.Create();
+        var goal    = SampleGoal(profile.UserId);
+        var session = SessionAtExecutionVerified();
+
+        _onboarding.GetActiveSessionAsync(Arg.Any<CancellationToken>()).Returns(session);
+        _onboarding.UpsertAsync(Arg.Any<OnboardingSession>(), Arg.Any<CancellationToken>())
+                   .Returns(x => x.Arg<OnboardingSession>());
+        _userProfiles.GetSingleAsync(Arg.Any<CancellationToken>()).Returns(profile);
+        _goals.GetByUserIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(goal);
+        _goals.GetActiveCountAsync(profile.UserId, Arg.Any<CancellationToken>()).Returns(1);
+        _aiService.GenerateScheduleAsync(
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Result<HabitSchedulingResult>.Success(FeasibleResult));
+
+        await _handler.Handle(new GenerateHabitsCommand(), default);
+
+        profile.Economy.ShieldsAvailable.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task SubsequentGoal_DoesNotGrantShield()
+    {
+        var profile = UserProfileEntity.Create();
+        var goal    = SampleGoal(profile.UserId);
+        var session = SessionAtExecutionVerified();
+
+        _onboarding.GetActiveSessionAsync(Arg.Any<CancellationToken>()).Returns(session);
+        _onboarding.UpsertAsync(Arg.Any<OnboardingSession>(), Arg.Any<CancellationToken>())
+                   .Returns(x => x.Arg<OnboardingSession>());
+        _userProfiles.GetSingleAsync(Arg.Any<CancellationToken>()).Returns(profile);
+        _goals.GetByUserIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(goal);
+        _goals.GetActiveCountAsync(profile.UserId, Arg.Any<CancellationToken>()).Returns(2);
+        _aiService.GenerateScheduleAsync(
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Result<HabitSchedulingResult>.Success(FeasibleResult));
+
+        await _handler.Handle(new GenerateHabitsCommand(), default);
+
+        profile.Economy.ShieldsAvailable.Should().Be(0);
+    }
+
     // ── wiring helper ─────────────────────────────────────────────────────────
 
     private void ArrangeHappyPath(

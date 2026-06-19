@@ -33,6 +33,7 @@ public static class MauiProgram
             cfg.RegisterServicesFromAssembly(typeof(GetOrCreateOnboardingSessionQuery).Assembly));
 
         builder.Services.AddSingleton<AppShellViewModel>();
+        builder.Services.AddSingleton<HudViewModel>();
         builder.Services.AddSingleton<AppShell>();
         builder.Services.AddTransient<CreateGoalViewModel>();
         builder.Services.AddTransient<CreateGoalPage>();

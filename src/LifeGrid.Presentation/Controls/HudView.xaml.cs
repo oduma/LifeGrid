@@ -11,7 +11,7 @@ public partial class HudView : ContentView
 
     private async void OnProfileTapped(object? sender, TappedEventArgs e)
     {
-        if (BindingContext is not AppShellViewModel { IsOnboardingComplete: true })
+        if (Shell.Current?.BindingContext is not AppShellViewModel { IsOnboardingComplete: true })
             return;
         await Shell.Current.GoToAsync("user-setup");
     }

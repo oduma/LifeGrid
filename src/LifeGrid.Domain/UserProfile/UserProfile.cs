@@ -18,4 +18,6 @@ public sealed class UserProfile
     public UserEconomy                   Economy      { get; private set; } = null!;
     public UserActiveStates              ActiveStates { get; private set; } = null!;
     public IReadOnlyCollection<UserBadge> Badges      => _badges.AsReadOnly();
+
+    public void GrantBonusShield() => Economy.GrantShield();
 }

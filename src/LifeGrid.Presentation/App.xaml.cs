@@ -14,12 +14,14 @@ public partial class App
     private readonly IMediator                 _mediator;
     private readonly IApiCredentialSyncService _credentialSync;
     private readonly AppShellViewModel         _appShellViewModel;
+    private readonly HudViewModel              _hudViewModel;
 
     public App(
         IServiceProvider          services,
         IMediator                 mediator,
         IApiCredentialSyncService credentialSync,
-        AppShellViewModel         appShellViewModel)
+        AppShellViewModel         appShellViewModel,
+        HudViewModel              hudViewModel)
     {
         InitializeComponent();
         UserAppTheme       = AppTheme.Light;
@@ -27,6 +29,7 @@ public partial class App
         _mediator          = mediator;
         _credentialSync    = credentialSync;
         _appShellViewModel = appShellViewModel;
+        _hudViewModel      = hudViewModel;
     }
 
     protected override Window CreateWindow(IActivationState? activationState)
@@ -43,11 +46,13 @@ public partial class App
         if (countResult.IsSuccess && countResult.Value > 0)
         {
             _appShellViewModel.SetOnboardingComplete();
+            await _hudViewModel.LoadAsync();
             await Shell.Current.GoToAsync("//goals");
             return;
         }
 
         // New or mid-onboarding user
+        await _hudViewModel.LoadAsync();
         var sessionResult = await _mediator.Send(new GetOrCreateOnboardingSessionQuery());
         if (sessionResult.IsSuccess && !sessionResult.Value!.IsComplete)
             await Shell.Current.GoToAsync("create-goal");

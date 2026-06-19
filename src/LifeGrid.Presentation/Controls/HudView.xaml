@@ -11,26 +11,96 @@
         Padding="16,0"
         VerticalOptions="Center">
 
-        <!-- Left: Profile / Setup icon — Primary when setup page is active -->
-        <Label
-            Grid.Column="0"
-            Text="&#xE853;"
-            Style="{StaticResource IconStyle}"
-            VerticalOptions="Center">
-            <Label.Triggers>
-                <DataTrigger TargetType="Label"
-                             Binding="{Binding IsProfileActive}"
-                             Value="True">
-                    <Setter Property="TextColor" Value="{StaticResource Primary}" />
-                </DataTrigger>
-            </Label.Triggers>
-            <Label.GestureRecognizers>
-                <TapGestureRecognizer Tapped="OnProfileTapped" />
-            </Label.GestureRecognizers>
-        </Label>
+        <!-- Left: Profile icon + level badge -->
+        <HorizontalStackLayout Grid.Column="0" Spacing="4" VerticalOptions="Center">
 
-        <!-- Center: Uninitialized — Phase 1 placeholder -->
-        <ContentView Grid.Column="1" />
+            <Label
+                Text="&#xE853;"
+                Style="{StaticResource IconStyle}"
+                VerticalOptions="Center">
+                <Label.Triggers>
+                    <DataTrigger TargetType="Label"
+                                 Binding="{Binding IsProfileActive}"
+                                 Value="True">
+                        <Setter Property="TextColor" Value="{StaticResource Primary}" />
+                    </DataTrigger>
+                </Label.Triggers>
+                <Label.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnProfileTapped" />
+                </Label.GestureRecognizers>
+            </Label>
+
+            <Border
+                WidthRequest="28"
+                HeightRequest="28"
+                StrokeThickness="1.5"
+                Stroke="{StaticResource Primary}"
+                BackgroundColor="Transparent"
+                VerticalOptions="Center">
+                <Border.StrokeShape>
+                    <Ellipse />
+                </Border.StrokeShape>
+                <Label
+                    Text="{Binding Level}"
+                    FontFamily="ShareTechMono"
+                    FontSize="11"
+                    HorizontalOptions="Center"
+                    VerticalOptions="Center"
+                    TextColor="{StaticResource OnSurface}" />
+            </Border>
+
+        </HorizontalStackLayout>
+
+        <!-- Center: Telemetry pairs — weekly values highlighted in Primary, lifetime/cap in OnSurface -->
+        <ScrollView Grid.Column="1" Orientation="Horizontal" VerticalOptions="Center">
+            <HorizontalStackLayout Spacing="16" Padding="8,0">
+
+                <Label VerticalOptions="Center">
+                    <Label.FormattedText>
+                        <FormattedString>
+                            <Span Text="GP " TextColor="{StaticResource OnSurface}" FontFamily="ShareTechMono" />
+                            <Span Text="{Binding GpLifetime}" TextColor="{StaticResource OnSurface}" FontFamily="ShareTechMono" />
+                            <Span Text=" / " TextColor="{StaticResource OnSurface}" FontFamily="ShareTechMono" />
+                            <Span Text="{Binding GpWeekly}" TextColor="{StaticResource Primary}" FontFamily="ShareTechMono" FontAttributes="Bold" />
+                        </FormattedString>
+                    </Label.FormattedText>
+                </Label>
+
+                <Label VerticalOptions="Center">
+                    <Label.FormattedText>
+                        <FormattedString>
+                            <Span Text="XP " TextColor="{StaticResource OnSurface}" FontFamily="ShareTechMono" />
+                            <Span Text="{Binding XpLifetime}" TextColor="{StaticResource OnSurface}" FontFamily="ShareTechMono" />
+                            <Span Text=" / " TextColor="{StaticResource OnSurface}" FontFamily="ShareTechMono" />
+                            <Span Text="{Binding XpWeekly}" TextColor="{StaticResource Primary}" FontFamily="ShareTechMono" FontAttributes="Bold" />
+                        </FormattedString>
+                    </Label.FormattedText>
+                </Label>
+
+                <Label VerticalOptions="Center">
+                    <Label.FormattedText>
+                        <FormattedString>
+                            <Span Text="SP " TextColor="{StaticResource OnSurface}" FontFamily="ShareTechMono" />
+                            <Span Text="{Binding SpCurrent}" TextColor="{StaticResource OnSurface}" FontFamily="ShareTechMono" />
+                            <Span Text=" / " TextColor="{StaticResource OnSurface}" FontFamily="ShareTechMono" />
+                            <Span Text="{Binding SpWeekly}" TextColor="{StaticResource Primary}" FontFamily="ShareTechMono" FontAttributes="Bold" />
+                        </FormattedString>
+                    </Label.FormattedText>
+                </Label>
+
+                <Label VerticalOptions="Center">
+                    <Label.FormattedText>
+                        <FormattedString>
+                            <Span Text="Shields " TextColor="{StaticResource OnSurface}" FontFamily="ShareTechMono" />
+                            <Span Text="{Binding ShieldsActive}" TextColor="{StaticResource Primary}" FontFamily="ShareTechMono" FontAttributes="Bold" />
+                            <Span Text=" / " TextColor="{StaticResource OnSurface}" FontFamily="ShareTechMono" />
+                            <Span Text="{Binding ShieldsCap}" TextColor="{StaticResource OnSurface}" FontFamily="ShareTechMono" />
+                        </FormattedString>
+                    </Label.FormattedText>
+                </Label>
+
+            </HorizontalStackLayout>
+        </ScrollView>
 
         <!-- Right: Notifications icon -->
         <Label

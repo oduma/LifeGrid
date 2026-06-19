@@ -1398,3 +1398,193 @@ All acceptance criteria met. `dotnet build LifeGrid.slnx` → **Build succeeded.
 | Application | 44 | All passed |
 | Infrastructure | 46 | All passed |
 | **Total** | **149** | **All passed** |
+
+---
+
+## Phase 8: Global HUD Metric Wiring & Economy Data Binding
+
+**Source:** `docs/requirements/Phase-8-requirements.md`  
+**Design authority refs:** `docs/specs/screen-layout-specification.md`, `docs/specs/style-guide.md`, `docs/specs/data-structure.json`
+
+---
+
+### P8.1 Objective
+
+Replace the empty Phase 1 HUD center placeholder with a live, data-bound telemetry panel. The panel displays nine values (n1–n9) aggregated from `UserProfile`, the active `Week`, and its `WeekGoal` items, with clear visual emphasis distinguishing weekly actionable numbers (Primary color) from lifetime/capacity baselines (OnSurface color).
+
+---
+
+### P8.2 Clarifications (agreed 2026-06-18)
+
+| # | Question | Answer |
+|---|---|---|
+| Q1 | HUD metrics in `AppShellViewModel` or separate `HudViewModel`? | Separate `HudViewModel`; `AppShell.xaml.cs` sets `HudControl.BindingContext = hudViewModel`. `OnProfileTapped` reads `Shell.Current.BindingContext` (still `AppShellViewModel`) instead of `this.BindingContext`. |
+| Q2 | "Active" WeekGoal filter for n3/n5 calculations? | All `WeekGoal` rows in the current week, regardless of penalty state. To be refined when the penalties system is implemented. |
+| Q3 | Typewriter animation (Style Guide §7)? | Deferred. Phase 8 binds plain number strings; animation is a future visual polish phase. |
+
+---
+
+### P8.3 Data Mapping (n1–n9)
+
+| Symbol | Source | Formula |
+|---|---|---|
+| n1 (Level) | `UserProfile.CurrentLevel` | Direct |
+| n2 (Lifetime GP) | `UserProfile.Economy.LifetimeGpAverage` | Direct (double, format `F2`) |
+| n3 (Weekly GP) | Active `WeekGoal` items | `Average(wg => wg.GoalWeeklyGp)`; 0.0 when no WeekGoals |
+| n4 (Lifetime XP) | `UserProfile.Economy.LifetimeXp` | Direct |
+| n5 (Weekly XP) | Active `WeekGoal` items | `Sum(wg => wg.GoalWeeklyXpEarned)`; 0 when no WeekGoals |
+| n6 (Current SP) | `UserProfile.Economy.CurrentSp` | Direct |
+| n7 (Weekly SP Earned) | `Week.TotalWeeklySpEarned` | Direct |
+| n8 (Active Shields) | `UserProfile.Economy.ShieldsAvailable` | Direct |
+| n9 (Shield Capacity) | `UserProfile.Economy.MaxShieldCap` | Direct |
+
+Empty-state rule: if no `UserProfile` exists → return all-zero DTO. If `UserProfile` exists but no active `Week` → return lifetime metrics from profile; all weekly metrics (n3, n5, n7) = 0.
+
+---
+
+### P8.4 Application Layer
+
+#### P8.4.1 `HudTelemetryDto`
+- New record in `LifeGrid.Application/Hud/`:
+  ```csharp
+  public record HudTelemetryDto(
+      int    Level, double LifetimeGp, double WeeklyGp,
+      int    LifetimeXp, int WeeklyXp, int CurrentSp,
+      int    WeeklySpEarned, int ActiveShields, int ShieldCap);
+  ```
+
+#### P8.4.2 `GetHudTelemetryQuery`
+- `IRequest<Result<HudTelemetryDto>>` in `LifeGrid.Application/Hud/`.
+- Handler dependencies: `IUserProfileRepository`, `IWeekRepository`.
+- Handler logic:
+  1. Load `UserProfile` via `IUserProfileRepository.GetSingleAsync()`.
+  2. If null → return `Result<HudTelemetryDto>.Success(new HudTelemetryDto(0, 0.0, 0.0, 0, 0, 0, 0, 0, 2))`.
+  3. Load active `Week` via `IWeekRepository.GetActiveAsync()` (new method — see P8.5.1).
+  4. If null → return DTO with lifetime metrics from profile and all weekly metrics as 0.
+  5. Compute n3 = `week.WeekGoals.Count > 0 ? week.WeekGoals.Average(wg => wg.GoalWeeklyGp) : 0.0`.
+  6. Compute n5 = `week.WeekGoals.Sum(wg => wg.GoalWeeklyXpEarned)`.
+  7. Return full DTO.
+
+#### P8.4.3 `IWeekRepository` Extension
+- Add method:
+  ```csharp
+  Task<WeekEntity?> GetActiveAsync(CancellationToken ct = default);
+  ```
+- Contract: returns the first `Week` with `Status == Active`, with `WeekGoals` navigation property populated.
+
+---
+
+### P8.5 Infrastructure Layer
+
+#### P8.5.1 `WeekRepository.GetActiveAsync()`
+- EF Core implementation using `.Include(w => w.WeekGoals)`:
+  ```csharp
+  public Task<WeekEntity?> GetActiveAsync(CancellationToken ct = default)
+      => db.Weeks
+           .Include(w => w.WeekGoals)
+           .FirstOrDefaultAsync(w => w.Status == WeekStatus.Active, ct);
+  ```
+- No new migration required — `WeekGoals` navigation is already configured via `WeekConfiguration.HasMany`.
+
+---
+
+### P8.6 Presentation Layer
+
+#### P8.6.1 `HudViewModel`
+- New `Singleton` in `LifeGrid.Presentation/ViewModels/HudViewModel.cs`.
+- Constructor: `HudViewModel(IMediator mediator, AppShellViewModel appShellViewModel)`.
+- Exposes `bool IsProfileActive` as a passthrough property mirroring `AppShellViewModel.IsProfileActive`, with forwarded `PropertyChanged` notification. This keeps the existing `DataTrigger` in `HudView.xaml` working after the BindingContext changes from `AppShellViewModel` to `HudViewModel`.
+- Nine `[ObservableProperty]` string properties, all initialised to their zero-display value:
+  - `Level = "0"`, `GpLifetime = "0.00"`, `GpWeekly = "0.00"`, `XpLifetime = "0"`, `XpWeekly = "0"`, `SpCurrent = "0"`, `SpWeekly = "0"`, `ShieldsActive = "0"`, `ShieldsCap = "0"`.
+- `public async Task LoadAsync(CancellationToken ct = default)` — sends `GetHudTelemetryQuery`, maps DTO to the nine string properties on success.
+  - GP and XP lifetime/weekly values formatted with `.ToString("F2")` / `.ToString()`.
+  - Called at app startup from `App.OnStart()` after UserProfile creation; can be re-called at any time to refresh.
+
+#### P8.6.2 `AppShell` Wiring
+- `AppShell.xaml`: add `x:Name="HudControl"` to the `<controls:HudView>` element in `Shell.TitleView`.
+- `AppShell.xaml.cs`: add `HudViewModel` constructor parameter; after `InitializeComponent()` set `HudControl.BindingContext = hudViewModel`.
+
+#### P8.6.3 `HudView.xaml` Rebuild
+Left column (`HorizontalStackLayout`, Spacing=4, Column 0):
+- Existing profile icon `Label` (&#xE853;, Material Symbols) with `TapGestureRecognizer`.
+- New level badge: `Border` with `StrokeShape="Ellipse"`, `WidthRequest=28`, `HeightRequest=28`, `Stroke="{StaticResource Primary}"`, transparent background. Child: `Label` bound to `{Binding Level}`, `FontFamily="ShareTechMono"`, `FontSize=12`, centered, `TextColor="{StaticResource OnSurface}"`.
+
+Center column (`ScrollView` Orientation=Horizontal, `*`, Column 1):
+- Child: `HorizontalStackLayout` (Spacing=16, Padding=8,0) containing four `Label`s, each using `FormattedString` with `Span`s for two-tone display:
+  - GP: `"GP "` + `{GpLifetime}` (OnSurface) + `" / "` + `{GpWeekly}` (Primary, Bold)
+  - XP: `"XP "` + `{XpLifetime}` (OnSurface) + `" / "` + `{XpWeekly}` (Primary, Bold)
+  - SP: `"SP "` + `{SpCurrent}` (OnSurface) + `" / "` + `{SpWeekly}` (Primary, Bold)
+  - Shields: `"Shields "` + `{ShieldsActive}` (Primary, Bold) + `" / "` + `{ShieldsCap}` (OnSurface)
+- All `Span`s use `FontFamily="ShareTechMono"`.
+
+Right column: notifications icon unchanged (Column 2).
+
+#### P8.6.4 `HudView.xaml.cs` Fix
+`OnProfileTapped` changes from `BindingContext is not AppShellViewModel` to `Shell.Current?.BindingContext is not AppShellViewModel { IsOnboardingComplete: true }` so it reads from the Shell (which still holds `AppShellViewModel`) rather than the HUD's own `BindingContext` (now `HudViewModel`).
+
+#### P8.6.5 `MauiProgram.cs`
+Add `builder.Services.AddSingleton<HudViewModel>();` (Singleton — same lifetime as `AppShell`).
+
+#### P8.6.6 `App.xaml.cs`
+- Add `HudViewModel` constructor parameter; store as `_hudViewModel`.
+- In `OnStart()`: call `await _hudViewModel.LoadAsync()` after UserProfile is created, in both the returning-user branch (before navigating to Goals) and the new-user branch (before navigating to create-goal).
+
+---
+
+### P8.7 TDD Invariants
+
+#### Application Tests (`LifeGrid.Application.Tests/Hud/`)
+| Test | Assert |
+|---|---|
+| `NoProfile_ReturnsAllZeroDto` | Handler returns `IsSuccess=true`, DTO with all fields 0 |
+| `WithProfileNoActiveWeek_ReturnsLifetimeMetrics_WeeklyAllZero` | n1=profile.Level, n2=lifetime GP, n4=lifetime XP, n6=SP; n3=0.0, n5=0, n7=0 |
+| `WithMultipleWeekGoals_AveragesGpCorrectly` | Two WeekGoals with GoalWeeklyGp 2.0 and 4.0 → n3 = 3.0 |
+| `WithMultipleWeekGoals_SumsXpCorrectly` | Two WeekGoals with XpEarned 100 and 150 → n5 = 250 |
+
+Note: ViewModel binding tests (9 string-property formatting, `LoadAsync` wiring) deferred to a future `LifeGrid.Presentation.Tests` project (same MAUI project-isolation constraint as Phase 7 `UserSetupViewModelTests`).
+
+---
+
+### P8.8 Acceptance Criteria
+
+- `dotnet build LifeGrid.slnx` → 0 errors, 0 warnings.
+- `dotnet test` → all 149 existing tests pass + all 4 new Phase 8 tests pass.
+- HUD center panel renders 4 telemetry pairs using `ShareTechMono` font.
+- Weekly values (n3, n5, n7, n8) display in `Primary` color; lifetime/capacity values (n2, n4, n6, n9) display in `OnSurface` color.
+- Level badge renders as a circular `Primary`-bordered badge adjacent to the profile icon.
+- After Factory Reset → new goal creation: HUD LoadAsync is re-triggered and shows updated data.
+- No new EF Core migration is required.
+
+---
+
+## P8.9 As-Built Outcome (2026-06-18)
+
+All acceptance criteria met. `dotnet build LifeGrid.slnx` → **Build succeeded. 0 Error(s). 0 Warning(s).** `dotnet test` → **157 tests passed.**
+
+### Post-Plan Corrections Applied
+
+| Item | Planned | As Built |
+|---|---|---|
+| GP number formatting (n2, n3) | `.ToString("F2")` — two decimal places | Integer rounded up: `((int)Math.Ceiling(value)).ToString()` — score values should not display fractional digits |
+| Bonus shield on first goal | Not in original plan | `GenerateHabitsCommand` checks `GetActiveCountAsync == 1`; calls `userProfile.GrantBonusShield()` before `CommitAsync`. Added `UserEconomy.GrantShield()` (internal) and `UserProfile.GrantBonusShield()` (public). |
+| `UserSetupPage` profile icon active state | Not in original plan | `UserSetupPage.OnAppearing` sets `_shellVm.IsProfileActive = true`; `OnDisappearing` resets to `false` — same pattern as `CreateGoalPage`. |
+| Navigation mutual exclusivity | Not in original plan | `AppShell.xaml.cs` subscribes to `AppShellViewModel.IsProfileActive` `PropertyChanged`. When profile is active: `Shell.SetTabBarForegroundColor(this, onSurface)` + `Shell.SetTabBarTitleColor(this, onSurface)` — makes the selected tab visually indistinguishable from unselected tabs so only one navigation indicator is ever highlighted. Restored to `Primary` on deactivation. |
+| `InternalsVisibleTo` additions | Plan noted `LifeGrid.Application.Tests` needed | Also required `InternalsVisibleTo("DynamicProxyGenAssembly2")` (NSubstitute proxy runtime) — same pattern as Infrastructure.csproj. `WeekGoal.SetGoalWeeklyGp(double)` and `SetGoalWeeklyXpEarned(int)` added as `internal` test-seeding helpers. |
+
+### New Files Created
+
+| File | Purpose |
+|---|---|
+| `src/LifeGrid.Application/Hud/HudTelemetryDto.cs` | 9-field DTO record n1–n9 |
+| `src/LifeGrid.Application/Hud/GetHudTelemetryQuery.cs` | Query + handler |
+| `src/LifeGrid.Presentation/ViewModels/HudViewModel.cs` | Singleton; passthrough `IsProfileActive`; `LoadAsync()` |
+| `tests/LifeGrid.Application.Tests/Hud/GetHudTelemetryQueryTests.cs` | 4 query math tests |
+
+### Test Counts by Layer
+
+| Layer | Tests | Result |
+|---|---|---|
+| Domain | 61 | All passed |
+| Application | 50 | All passed |
+| Infrastructure | 46 | All passed |
+| **Total** | **157** | **All passed** |

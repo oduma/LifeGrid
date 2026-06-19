@@ -20,4 +20,7 @@ public sealed class WeekGoal
     public PenaltyState PenaltyState       { get; private set; }
     public double       GoalWeeklyGp       { get; private set; }
     public int          GoalWeeklyXpEarned { get; private set; }
+
+    internal void SetGoalWeeklyGp(double value)       => GoalWeeklyGp       = value;
+    internal void SetGoalWeeklyXpEarned(int value)    => GoalWeeklyXpEarned = value;
 }

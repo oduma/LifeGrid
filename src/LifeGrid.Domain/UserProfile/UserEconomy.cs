@@ -18,4 +18,10 @@ public sealed class UserEconomy
     public int    CurrentSp         { get; private set; }
     public int    ShieldsAvailable  { get; private set; }
     public int    MaxShieldCap      { get; private set; }
+
+    internal void GrantShield()
+    {
+        if (ShieldsAvailable < MaxShieldCap)
+            ShieldsAvailable++;
+    }
 }

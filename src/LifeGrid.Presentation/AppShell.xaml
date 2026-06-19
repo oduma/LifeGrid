@@ -12,7 +12,7 @@
     BackgroundColor="{StaticResource Surface}">
 
     <Shell.TitleView>
-        <controls:HudView />
+        <controls:HudView x:Name="HudControl" />
     </Shell.TitleView>
 
     <TabBar>
