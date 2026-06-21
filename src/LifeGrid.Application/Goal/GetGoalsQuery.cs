@@ -1,4 +1,5 @@
 using LifeGrid.Application.UserProfile;
+using LifeGrid.Application.Week;
 using LifeGrid.Domain.Common;
 using MediatR;
 
@@ -8,7 +9,8 @@ public record GetGoalsQuery : IRequest<Result<IReadOnlyList<GoalSummaryDto>>>;
 
 public sealed class GetGoalsQueryHandler(
     IUserProfileRepository userProfileRepository,
-    IGoalRepository        goalRepository)
+    IGoalRepository        goalRepository,
+    IWeekRepository        weekRepository)
     : IRequestHandler<GetGoalsQuery, Result<IReadOnlyList<GoalSummaryDto>>>
 {
     public async Task<Result<IReadOnlyList<GoalSummaryDto>>> Handle(
@@ -21,15 +23,19 @@ public sealed class GetGoalsQueryHandler(
 
         var goals = await goalRepository.GetAllByUserIdAsync(profile.UserId, cancellationToken);
 
-        var dtos = goals
-            .Select(g => new GoalSummaryDto(
+        var dtos = new List<GoalSummaryDto>(goals.Count);
+        foreach (var g in goals)
+        {
+            var totalWeeks = await weekRepository.GetWeekGoalCountByGoalIdAsync(g.GoalId, cancellationToken);
+            dtos.Add(new GoalSummaryDto(
                 g.GoalId,
                 g.Description,
                 g.AmbientTag,
                 g.Duration,
                 g.DeadlineDate,
-                g.Status.ToString()))
-            .ToList();
+                g.Status.ToString(),
+                totalWeeks));
+        }
 
         return Result<IReadOnlyList<GoalSummaryDto>>.Success(dtos);
     }

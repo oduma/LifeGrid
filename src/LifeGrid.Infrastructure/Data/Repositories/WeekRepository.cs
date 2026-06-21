@@ -28,4 +28,7 @@ internal sealed class WeekRepository(LifeGridDbContext db) : IWeekRepository
 
     public Task<WeekEntity?> GetByStartDateAsync(DateTime startDate, CancellationToken ct = default)
         => db.Weeks.FirstOrDefaultAsync(w => w.StartDate.Date == startDate.Date, ct);
+
+    public Task<int> GetWeekGoalCountByGoalIdAsync(Guid goalId, CancellationToken ct = default)
+        => db.WeekGoals.CountAsync(wg => wg.GoalId == goalId, ct);
 }

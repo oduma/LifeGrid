@@ -24,7 +24,8 @@ public partial class GoalsViewModel(IMediator mediator) : ObservableObject
                 dto.AmbientTag,
                 dto.Duration,
                 dto.DeadlineDate,
-                dto.Status));
+                dto.Status,
+                dto.TotalWeeks));
     }
 
     [RelayCommand]

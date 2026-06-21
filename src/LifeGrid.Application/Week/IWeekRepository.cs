@@ -9,4 +9,5 @@ public interface IWeekRepository
     Task AddWeekGoalAsync(WeekGoalEntity weekGoal, CancellationToken ct = default);
     Task<WeekEntity?> GetActiveAsync(CancellationToken ct = default);
     Task<WeekEntity?> GetByStartDateAsync(DateTime startDate, CancellationToken ct = default);
+    Task<int> GetWeekGoalCountByGoalIdAsync(Guid goalId, CancellationToken ct = default);
 }

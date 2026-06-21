@@ -6,4 +6,5 @@ public record GoalSummaryItem(
     string   AmbientTag,
     string   Duration,
     DateTime DeadlineDate,
-    string   Status);
+    string   Status,
+    int      TotalWeeks);

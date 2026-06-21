@@ -2007,3 +2007,115 @@ UPDATE WeekGoals SET WeekGoalNumber = (
 - Existing data is preserved; `WeekGoalNumber` is backfilled retroactively by the migration.
 
 **Post-implementation note — test date correction:** The initial plan draft listed `2026-06-15` as Sunday and `2026-06-16` as Monday. These are incorrect: `2026-06-15` is a Monday and `2026-06-16` is a Tuesday. The `CalculateStartDate` formula was correct; only the test `InlineData` fixtures needed correcting. The final test suite uses the verified dates above.
+
+---
+
+## Phase 11 — High-Fidelity Goal Card UI
+
+### Context
+
+Finalized requirements for the Goal Card component. Source: `docs/requirements/Phase-11-requirements.md`. Clarifications obtained 2026-06-21.
+
+---
+
+## P11.1 Scope
+
+Replace the placeholder `GoalsPage.xaml` item template with a fully-specified 3-zone Goal Card. This is a **Presentation + Application read-side change only** — no Domain entities are modified and no EF migrations are required.
+
+**Layers touched:**
+- `LifeGrid.Application` — `GoalSummaryDto` extended; `IWeekRepository` extended; `GetGoalsQuery` handler updated
+- `LifeGrid.Infrastructure` — `WeekRepository` (one new read method)
+- `LifeGrid.Presentation` — `GoalSummaryItem`, `GoalsViewModel`, new `StatusToColorConverter`, `GoalsPage.xaml`
+- `LifeGrid.Application.Tests` — `GetGoalsQueryHandlerTests` (new file)
+
+---
+
+## P11.2 Data Extension — TotalWeeks
+
+`GoalSummaryDto` and `GoalSummaryItem` gain a `TotalWeeks` (int) field representing the **persisted count of `WeekGoal` rows** for a given `GoalId`.
+
+**Clarification (Q2 — answered B):** TotalWeeks is the actual DB-persisted count, not a date-range calculation. A goal with no habits generated yet returns `TotalWeeks = 0`.
+
+**Required changes:**
+1. Add `Task<int> GetWeekGoalCountByGoalIdAsync(Guid goalId, CancellationToken ct = default)` to `IWeekRepository`.
+2. `GetGoalsQueryHandler` injects `IWeekRepository` and calls this method for each goal.
+3. The result is passed as `TotalWeeks` in `GoalSummaryDto` and mapped through to `GoalSummaryItem`.
+
+---
+
+## P11.3 Status Color Mapping
+
+The `Status` badge (Zone A, right-aligned) uses design token colors derived from the semantic roles in `style-guide.md`:
+
+| Status | Hex | Token name | Rationale |
+|---|---|---|---|
+| `Active` | `#35f8db` | Primary | Token: "active states" |
+| `Overwhelmed` | `#a20ba0` | On-Secondary | Prominent warning; secondary color family |
+| `Abandoned` | `#FF1B77` | Error | Token: "destructive actions" |
+| `Completed` | `#58585a` | On-Surface | Neutral/muted; goal lifecycle closed |
+
+**Implementation:** New `StatusToColorConverter : IValueConverter` in `LifeGrid.Presentation/Converters/`. Uses hardcoded hex values (not `Application.Current.Resources` lookup) to avoid MAUI runtime dependency at design/test time.
+
+---
+
+## P11.4 Goal Card Visual Architecture
+
+The `CollectionView` item template is replaced with a `Border`-wrapped card containing three vertical zones.
+
+**Card container:** `Border`, `Margin="16,8"`, `Padding="16"`, `BackgroundColor="{StaticResource Surface}"`, `StrokeShape="RoundRectangle 2"`, `StrokeThickness="1"`.
+
+### Zone A — Status & Category Header
+- Layout: `Grid` with two columns (`*, Auto`).
+- **Left (AmbientTag):** `DM Mono`, 12sp, `OnSurface` at 60% opacity. Displayed as-is from the stored field value.
+- **Right (Status badge):** `Border` (2px `StrokeShape`, 1dp stroke, `Padding="6,2"`) containing a `Label` (Share Tech Mono, 11sp). Both the border `Stroke` and label `TextColor` are bound to `Status` via `StatusToColorConverter`.
+
+### Zone B — Core Description
+- Full-width `Label`. Font: `DM Mono`, 22sp, Bold, `OnSurface`, `LineHeight="1.3"`.
+
+### Zone C — Timeline Metrics
+**Column order (spec §2.2.C, confirmed Q3):** DURATION | DEADLINE | TOTAL WKS
+
+Layout: `Grid` with three equal (`*,*,*`) columns. Each column is a `VerticalStackLayout Spacing="2"` with a muted label above and a value label below.
+
+| Column | Muted label | Value binding | Value color |
+|---|---|---|---|
+| 1 | `"DURATION"` | `{Binding Duration}` | OnSurface, Bold |
+| 2 | `"DEADLINE"` | `{Binding DeadlineDate, StringFormat='{0:dd MMM yyyy}'}` | OnSurface, Bold |
+| 3 | `"TOTAL WKS"` | `{Binding TotalWeeks}` | **Primary (`#35f8db`)**, Bold |
+
+Muted labels: Share Tech Mono, 10sp, `OnSurface` at 50% opacity.
+Value labels: Share Tech Mono, 14sp, Bold.
+
+---
+
+## P11.5 Loading State
+
+**Clarification (Q4 — answered C):** Out of scope for Phase 11. The existing `CollectionView.EmptyView` handles the zero-goal state. No shimmer or loading placeholder is implemented.
+
+---
+
+## P11.6 Tests
+
+**Clarification (Q5 — answered A):** Unit tests covering the Application layer data path.
+
+### New Application Tests — `GetGoalsQueryHandlerTests.cs`
+- `NoProfile_ReturnsEmptyList` — handler returns empty list when no user profile exists.
+- `NoGoals_ReturnsEmptyList` — profile exists but `GetAllByUserIdAsync` returns empty; result is `[]`.
+- `WithGoals_MapsTotalWeeks` — `GetWeekGoalCountByGoalIdAsync` returns 12 for a goal; resulting DTO has `TotalWeeks == 12`.
+- `WithGoals_MapsAllDtoFields` — Description, AmbientTag, Duration, DeadlineDate, Status are correctly mapped.
+
+### Deferred — `StatusToColorConverterTests`
+`StatusToColorConverter` resides in `LifeGrid.Presentation` (target `net10.0-android`) and cannot be referenced from the `net10.0` test projects. Tests are deferred to a future `LifeGrid.Presentation.Tests` project, following the pattern established in `tests/LifeGrid.Application.Tests/UserSetup/UserSetupViewModelTests.cs`.
+
+---
+
+## P11.7 Acceptance Criteria
+
+- `dotnet build LifeGrid.slnx` → 0 errors.
+- `dotnet test` → all prior 213 tests pass + 4 new `GetGoalsQueryHandlerTests` tests (217 total).
+- `GoalsPage` renders each goal as a styled card with Zones A, B, C.
+- Status badge color matches the mapping table in P11.3 for all four status values.
+- Zone C columns appear in order: DURATION | DEADLINE | TOTAL WKS (left to right).
+- TOTAL WKS value is rendered in Primary color (`#35f8db`).
+
+**Post-implementation correction — Zone C column alignment:** The initial spec did not prescribe individual column alignment. After implementation, the user requested the columns use the full card width. The final layout anchors DURATION with `HorizontalOptions="Start"`, DEADLINE with `HorizontalOptions="Center"` (labels also `HorizontalTextAlignment="Center"`), and TOTAL WKS with `HorizontalOptions="End"` (labels also `HorizontalTextAlignment="End"`). This replaces the default left-aligned behaviour for all three columns.

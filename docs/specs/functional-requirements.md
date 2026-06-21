@@ -263,10 +263,10 @@ The engine logically divides the calendar week into two distinct blocks: First P
 * Accessible from the top-level Interaction Hub for users who skipped it during onboarding. Completing it instantly credits the user with **1 Bonus "Life Happens Shield"** and applies the Cap Bypass Rule. Once processed, the action vanishes permanently.
 
 ### 4.2 Goal Level Interactions
-#### 4.2.1 Reduce the Load or Give Up (Overwhelmed State)
+#### 4.2.1 Reduce the Load or Give Up
 The user triggers an explicit "Overwhelmed" action for a specific goal.
 * **Option A: Abandon Goal:** The target goal and all associated future habits are permanently cancelled. The engine revokes **100% of the XP** historically earned through that specific goal, **plus an additional flat penalty of -100 XP**. <file path="docs\specs\assets\wireframes\wf12.png">
-* **Option B: Recalculate Schedule (Extend Deadline):** The user provides a text comment. The AI extends the goal's overall `Deadline Date` and `Duration` by exactly **25%** and recalculates the remaining schedule, by passing it through <file path="docs\specs\assets\prompts\prompt2.1.txt"> and <file path="docs\specs\assets\prompts\prompt2.2.txt">. Passing the existing information with the extended deadline. The user incurs a flat penalty of **-100 XP**.<file path="docs\specs\assets\wireframes\wf13.png">
+* **Option B: Recalculate Schedule (Overwhelmed State) (Extend Deadline):** The user provides a text comment. The AI extends the goal's overall `Deadline Date` and `Duration` by exactly **25%** and recalculates the remaining schedule, by passing it through <file path="docs\specs\assets\prompts\prompt2.1.txt"> and <file path="docs\specs\assets\prompts\prompt2.2.txt">. Passing the existing information with the extended deadline. The user incurs a flat penalty of **-100 XP**.<file path="docs\specs\assets\wireframes\wf13.png">
 
 #### 4.2.2 Automated Overwhelmed Trigger (Progress Degradation)
 * **Trigger:** Goal Progression (GP) falls below **50% for two consecutive weeks**.

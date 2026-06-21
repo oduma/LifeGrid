@@ -3,9 +3,14 @@
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:controls="clr-namespace:LifeGrid.Presentation.Controls"
+    xmlns:converters="clr-namespace:LifeGrid.Presentation.Converters"
     x:Class="LifeGrid.Presentation.Pages.GoalsPage"
     Title="Goals"
     BackgroundColor="{StaticResource Background}">
+
+    <ContentPage.Resources>
+        <converters:StatusToColorConverter x:Key="StatusToColorConverter" />
+    </ContentPage.Resources>
 
     <Grid RowDefinitions="*,Auto">
 
@@ -25,17 +30,111 @@
 
                 <CollectionView.ItemTemplate>
                     <DataTemplate>
-                        <VerticalStackLayout Padding="16,8" Spacing="4">
-                            <Label
-                                Text="{Binding Description}"
-                                Style="{StaticResource HeadlineStyle}" />
-                            <Label
-                                Text="{Binding AmbientTag}"
-                                TextColor="{StaticResource OnSurface}" />
-                            <Label
-                                Text="{Binding DeadlineDate, StringFormat='{0:yyyy-MM-dd}'}"
-                                TextColor="{StaticResource Primary}" />
-                        </VerticalStackLayout>
+
+                        <!-- Card container: Surface bg, 2px radius, subtle border -->
+                        <Border
+                            Margin="16,8"
+                            Padding="16"
+                            BackgroundColor="{StaticResource Surface}"
+                            StrokeShape="RoundRectangle 2"
+                            StrokeThickness="1"
+                            Stroke="{StaticResource SurfaceBrush}">
+
+                            <VerticalStackLayout Spacing="8">
+
+                                <!-- Zone A: AmbientTag (left) | Status badge (right) -->
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <Label
+                                        Grid.Column="0"
+                                        Text="{Binding AmbientTag}"
+                                        FontFamily="{StaticResource FontDMMono}"
+                                        FontSize="12"
+                                        TextColor="{StaticResource OnSurface}"
+                                        Opacity="0.6"
+                                        VerticalOptions="Center" />
+                                    <Border
+                                        Grid.Column="1"
+                                        Padding="6,2"
+                                        StrokeShape="RoundRectangle 2"
+                                        StrokeThickness="1"
+                                        Stroke="{Binding Status, Converter={StaticResource StatusToColorConverter}}">
+                                        <Label
+                                            Text="{Binding Status}"
+                                            FontFamily="{StaticResource FontShareTechMono}"
+                                            FontSize="11"
+                                            TextColor="{Binding Status, Converter={StaticResource StatusToColorConverter}}" />
+                                    </Border>
+                                </Grid>
+
+                                <!-- Zone B: Description — dominant DM Mono headline -->
+                                <Label
+                                    Text="{Binding Description}"
+                                    FontFamily="{StaticResource FontDMMono}"
+                                    FontSize="22"
+                                    FontAttributes="Bold"
+                                    TextColor="{StaticResource OnSurface}"
+                                    LineHeight="1.3" />
+
+                                <!-- Zone C: Metric columns (DURATION | DEADLINE | TOTAL WKS) -->
+                                <Grid ColumnDefinitions="*,*,*" Margin="0,8,0,0">
+
+                                    <!-- Col 1: Duration — left anchor -->
+                                    <VerticalStackLayout Grid.Column="0" Spacing="2" HorizontalOptions="Start">
+                                        <Label
+                                            Text="DURATION"
+                                            FontFamily="{StaticResource FontShareTechMono}"
+                                            FontSize="10"
+                                            TextColor="{StaticResource OnSurface}"
+                                            Opacity="0.5" />
+                                        <Label
+                                            Text="{Binding Duration}"
+                                            FontFamily="{StaticResource FontShareTechMono}"
+                                            FontSize="14"
+                                            FontAttributes="Bold"
+                                            TextColor="{StaticResource OnSurface}" />
+                                    </VerticalStackLayout>
+
+                                    <!-- Col 2: Deadline — centred -->
+                                    <VerticalStackLayout Grid.Column="1" Spacing="2" HorizontalOptions="Center">
+                                        <Label
+                                            Text="DEADLINE"
+                                            FontFamily="{StaticResource FontShareTechMono}"
+                                            FontSize="10"
+                                            TextColor="{StaticResource OnSurface}"
+                                            Opacity="0.5"
+                                            HorizontalTextAlignment="Center" />
+                                        <Label
+                                            Text="{Binding DeadlineDate, StringFormat='{0:dd MMM yyyy}'}"
+                                            FontFamily="{StaticResource FontShareTechMono}"
+                                            FontSize="14"
+                                            FontAttributes="Bold"
+                                            TextColor="{StaticResource OnSurface}"
+                                            HorizontalTextAlignment="Center" />
+                                    </VerticalStackLayout>
+
+                                    <!-- Col 3: Total Weeks — right anchor, Primary accent -->
+                                    <VerticalStackLayout Grid.Column="2" Spacing="2" HorizontalOptions="End">
+                                        <Label
+                                            Text="TOTAL WKS"
+                                            FontFamily="{StaticResource FontShareTechMono}"
+                                            FontSize="10"
+                                            TextColor="{StaticResource OnSurface}"
+                                            Opacity="0.5"
+                                            HorizontalTextAlignment="End" />
+                                        <Label
+                                            Text="{Binding TotalWeeks}"
+                                            FontFamily="{StaticResource FontShareTechMono}"
+                                            FontSize="14"
+                                            FontAttributes="Bold"
+                                            TextColor="{StaticResource Primary}"
+                                            HorizontalTextAlignment="End" />
+                                    </VerticalStackLayout>
+
+                                </Grid>
+
+                            </VerticalStackLayout>
+                        </Border>
+
                     </DataTemplate>
                 </CollectionView.ItemTemplate>
 
