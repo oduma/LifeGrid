@@ -46,13 +46,14 @@ public sealed class FactoryResetServiceTests : IDisposable
         // Goal
         var goal = Goal.Create(
             profile.UserId, "Run a marathon", "Physical", "6 months",
-            new DateTime(2026, 12, 10, 0, 0, 0, DateTimeKind.Utc));
+            new DateTime(2026, 12, 10, 0, 0, 0, DateTimeKind.Utc),
+            new DateTime(2026, 6, 16));
         _db.Goals.Add(goal);
         await _db.SaveChangesAsync();
 
         // Week → WeekGoal → Habit
         var week     = WeekEntity.Create(1, new DateTime(2026, 6, 16, 0, 0, 0, DateTimeKind.Utc));
-        var weekGoal = WeekGoalEntity.Create(week.WeekId, goal.GoalId);
+        var weekGoal = WeekGoalEntity.Create(week.WeekId, goal.GoalId, 1);
         _db.Weeks.Add(week);
         _db.WeekGoals.Add(weekGoal);
         await _db.SaveChangesAsync();

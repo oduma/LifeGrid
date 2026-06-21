@@ -40,7 +40,8 @@ public sealed class WeekRepositoryTests : IDisposable
 
         var goal = Goal.Create(
             profile.UserId, "Run a marathon", "Physical", "6 months",
-            new DateTime(2026, 12, 10, 0, 0, 0, DateTimeKind.Utc));
+            new DateTime(2026, 12, 10, 0, 0, 0, DateTimeKind.Utc),
+            new DateTime(2026, 6, 16));
         _db.Goals.Add(goal);
         await _db.SaveChangesAsync();
         _db.ChangeTracker.Clear();
@@ -54,7 +55,7 @@ public sealed class WeekRepositoryTests : IDisposable
         var repository = new WeekRepository(_db);
 
         var week     = WeekEntity.Create(1, new DateTime(2026, 6, 16));
-        var weekGoal = WeekGoalEntity.Create(week.WeekId, goalId);
+        var weekGoal = WeekGoalEntity.Create(week.WeekId, goalId, 1);
 
         await repository.AddAsync(week, weekGoal);
         await _db.SaveChangesAsync(); // simulate UoW commit
@@ -71,7 +72,7 @@ public sealed class WeekRepositoryTests : IDisposable
         var repository = new WeekRepository(_db);
 
         var week     = WeekEntity.Create(1, new DateTime(2026, 6, 16));
-        var weekGoal = WeekGoalEntity.Create(week.WeekId, goalId);
+        var weekGoal = WeekGoalEntity.Create(week.WeekId, goalId, 1);
 
         await repository.AddAsync(week, weekGoal);
         await _db.SaveChangesAsync();
@@ -89,7 +90,7 @@ public sealed class WeekRepositoryTests : IDisposable
         var repository = new WeekRepository(_db);
 
         var week     = WeekEntity.Create(1, new DateTime(2026, 6, 16));
-        var weekGoal = WeekGoalEntity.Create(week.WeekId, goalId);
+        var weekGoal = WeekGoalEntity.Create(week.WeekId, goalId, 1);
 
         await repository.AddAsync(week, weekGoal);
         // No commit — nothing should be in the DB yet
@@ -97,5 +98,60 @@ public sealed class WeekRepositoryTests : IDisposable
 
         (await _db.Weeks.CountAsync()).Should().Be(0);
         (await _db.WeekGoals.CountAsync()).Should().Be(0);
+    }
+
+    // ── GetByStartDateAsync ───────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetByStartDateAsync_WhenWeekExists_ReturnsIt()
+    {
+        var goalId     = await SeedGoalAsync();
+        var repository = new WeekRepository(_db);
+        var monday     = new DateTime(2026, 6, 23);
+
+        var week     = WeekEntity.Create(1, monday);
+        var weekGoal = WeekGoalEntity.Create(week.WeekId, goalId, 1);
+        await repository.AddAsync(week, weekGoal);
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        var result = await repository.GetByStartDateAsync(monday);
+
+        result.Should().NotBeNull();
+        result!.WeekId.Should().Be(week.WeekId);
+    }
+
+    [Fact]
+    public async Task GetByStartDateAsync_WhenNoneExists_ReturnsNull()
+    {
+        var repository = new WeekRepository(_db);
+
+        var result = await repository.GetByStartDateAsync(new DateTime(2030, 1, 6));
+
+        result.Should().BeNull();
+    }
+
+    // ── AddWeekGoalAsync ──────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task AddWeekGoalAsync_PersistsAfterCommit()
+    {
+        var goalId     = await SeedGoalAsync();
+        var repository = new WeekRepository(_db);
+
+        var week = WeekEntity.Create(1, new DateTime(2026, 6, 23));
+        _db.Weeks.Add(week);
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        var weekGoal = WeekGoalEntity.Create(week.WeekId, goalId, 1);
+        await repository.AddWeekGoalAsync(weekGoal);
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        (await _db.WeekGoals.CountAsync()).Should().Be(1);
+        var stored = await _db.WeekGoals.SingleAsync();
+        stored.GoalId.Should().Be(goalId);
+        stored.WeekGoalNumber.Should().Be(1);
     }
 }

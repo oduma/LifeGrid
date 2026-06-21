@@ -105,6 +105,8 @@ public sealed class FinalizeGoalCommandHandlerTests
         savedGoal.Description.Should().Be("Run a marathon");
         savedGoal.RefinementAnswers.Should().HaveCount(2);
         savedGoal.RefinementAnswers.First(r => r.RankOrder == 1).Answer.Should().Be("32, male");
+        savedGoal.StartDate.Should().Be(GoalAggregate.CalculateStartDate(DateTime.Now));
+        savedGoal.StartDate.DayOfWeek.Should().Be(DayOfWeek.Monday);
     }
 
     [Fact]

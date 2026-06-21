@@ -68,11 +68,25 @@ public sealed class GenerateHabitsCommandHandler(
 
         var feasible = (HabitSchedulingResult.Feasible)serviceResult.Value!;
 
+        int weekGoalNumber = 0;
         foreach (var weekDto in feasible.Schedule)
         {
-            var week     = WeekEntity.Create(weekDto.WeekNumber, weekDto.StartDate);
-            var weekGoal = WeekGoalEntity.Create(week.WeekId, goal.GoalId);
-            await weekRepository.AddAsync(week, weekGoal, cancellationToken);
+            weekGoalNumber++;
+
+            var existingWeek = await weekRepository.GetByStartDateAsync(weekDto.StartDate, cancellationToken);
+            WeekGoalEntity weekGoal;
+
+            if (existingWeek is null)
+            {
+                var newWeek = WeekEntity.Create(weekDto.WeekNumber, weekDto.StartDate);
+                weekGoal    = WeekGoalEntity.Create(newWeek.WeekId, goal.GoalId, weekGoalNumber);
+                await weekRepository.AddAsync(newWeek, weekGoal, cancellationToken);
+            }
+            else
+            {
+                weekGoal = WeekGoalEntity.Create(existingWeek.WeekId, goal.GoalId, weekGoalNumber);
+                await weekRepository.AddWeekGoalAsync(weekGoal, cancellationToken);
+            }
 
             var weekDeadline = weekDto.StartDate.AddDays(6);
             var habits = weekDto.Habits

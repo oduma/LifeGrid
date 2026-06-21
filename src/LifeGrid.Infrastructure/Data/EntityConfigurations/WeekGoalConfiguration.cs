@@ -13,6 +13,7 @@ internal sealed class WeekGoalConfiguration : IEntityTypeConfiguration<WeekGoal>
 
         builder.Property(wg => wg.WeekId);
         builder.Property(wg => wg.GoalId);
+        builder.Property(wg => wg.WeekGoalNumber);
         builder.Property(wg => wg.GoalWeeklyGp);
         builder.Property(wg => wg.GoalWeeklyXpEarned);
         builder.Property(wg => wg.PenaltyState)

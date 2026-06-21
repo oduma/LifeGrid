@@ -42,7 +42,8 @@ public sealed class GoalRefinementAnswerSchemaTests : IDisposable
     {
         var goal = GoalAggregate.Create(
             userId, "Run a marathon", "Physical", "6 months",
-            new DateTime(2027, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+            new DateTime(2027, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            DateTime.Now);
         _db.Goals.Add(goal);
         await _db.SaveChangesAsync();
         _db.ChangeTracker.Clear();

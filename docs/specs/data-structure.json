@@ -30,6 +30,7 @@
     "Description": "String",
     "Ambient_Tag": "String",
     "Duration": "String // Textual representation (e.g., '6 months')",
+    "Start_Date": "DateTime // Phase 10: system-calculated; first Monday on or after the Goal creation date",
     "Deadline_Date": "DateTime",
     "Status": "String (Active, Overwhelmed, Abandoned, Completed)",
     "Linked_Bad_Habits": [
@@ -73,6 +74,7 @@
       {
         "Week_GoalID": "Guid // Primary Key for this junction record",
         "GoalID": "Guid // FK to Goal",
+        "Week_Goal_Number": "Integer // Phase 10: 1-based sequence counter for this goal's weeks; independent of global Week_Number",
         "Penalty_State": "String (Clean, Level_1_Warning, Probation_Week_2, Reckoning_Week_3)",
         "Metrics": {
           "Goal_Weekly_GP": "Float // The strict evaluation metric for THIS specific goal",

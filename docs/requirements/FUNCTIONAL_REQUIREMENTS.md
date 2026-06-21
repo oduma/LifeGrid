@@ -1813,3 +1813,197 @@ DTOs (all in `LifeGrid.Application.Vice`):
 - After analysis: Completion panel lists detected vices with danger-level coloring; HUD shield counts update immediately (on the Complete screen) without requiring app restart; "Accept & Return" navigates back to `UserSetupPage`.
 - After completion: `UserProfile.IsViceSurveyCompleted == true`; `MaxShieldCap == 3`; `ShieldsAvailable` incremented by 1; each goal has `LinkedBadHabits` populated.
 - **Correction (post-implementation):** After survey completion the "Detect Hidden Vices" button is **no longer visible** anywhere in the system. `UserSetupPage.LoadAsync()` re-checks availability on every `OnAppearing`; button hides permanently once `IsViceSurveyCompleted == true`. There is no alert, no disabled state — the button simply disappears.
+
+---
+
+# Phase 10 — Temporal Alignment & Week Synchronization
+
+## Clarifications (resolved before implementation)
+
+| # | Question | Answer |
+|---|---|---|
+| Q1 | Is `Goal.StartDate` user-input or system-assigned? | System-assigned only. `Goal.Create()` accepts a `creationDate` and computes `StartDate` via a deterministic formula. |
+| Q2 | If created on Monday, does StartDate defer to next Monday? | **No.** Monday creation → StartDate = that same Monday. The Phase 10 spec wording ("defer to next Monday") is superseded by this clarification. |
+| Q3 | Backfill `WeekGoalNumber` for existing rows? | Yes — retroactively, via migration SQL assigning sequential values ordered by `Week.StartDate` within each `GoalId`. |
+| Q4 | Which handler is in scope for deduplication (Rule 2)? | `GenerateHabitsCommandHandler` (`src/LifeGrid.Application/Week/Commands/GenerateHabitsCommand.cs`). |
+| Q5 | Any UI changes? | None. Phase 10 is Domain + Application + Infrastructure only. |
+
+---
+
+## P10.1 Goal Temporal Anchor — `StartDate` (Domain)
+
+### Invariant
+When `Goal.Create()` is called, the system independently calculates and sets `StartDate` to the **first Monday on or after** the `creationDate`.
+
+**Formula:** `creationDate.Date.AddDays(((int)DayOfWeek.Monday - (int)creationDate.Date.DayOfWeek + 7) % 7)`
+
+| Creation day | `StartDate` |
+|---|---|
+| Monday | Same day |
+| Tuesday – Sunday | The following Monday |
+
+### Domain Changes
+- **`Goal.cs`**: Add `public DateTime StartDate { get; private set; }` property.
+- **`Goal.cs`**: Add `public static DateTime CalculateStartDate(DateTime creationDate)` using the formula above.
+- **`Goal.Create()`**: Add `DateTime creationDate` parameter (after `deadlineDate`). Set `StartDate = CalculateStartDate(creationDate)`.
+- **`FinalizeGoalCommand.cs`**: Pass `DateTime.Now` as `creationDate` when calling `Goal.Create()`.
+
+---
+
+## P10.2 WeekGoalNumber Sequence Tracking (Domain)
+
+### Invariant
+Each `WeekGoal` records its relative 1-based position in the goal's weekly schedule. This counter is per-goal and operates independently of global calendar dates or global `Week.WeekNumber`.
+
+### Domain Changes
+- **`WeekGoal.cs`**: Add `public int WeekGoalNumber { get; private set; }` property.
+- **`WeekGoal.Create()`**: Add `int weekGoalNumber` parameter (after `goalId`). Assign it directly.
+
+### Handler Responsibility
+`GenerateHabitsCommandHandler` assigns `WeekGoalNumber` by iterating the AI schedule in order, starting at 1 and incrementing by 1 per `WeekScheduleDto`.
+
+---
+
+## P10.3 Global Week Deduplication (Application + Infrastructure)
+
+### Invariant
+Before creating a new `Week` entity in `GenerateHabitsCommandHandler`, the handler must query for an existing `Week` with the same `StartDate`. If found, it reuses the existing `WeekId`. If not found, it creates and persists a new `Week`.
+
+This prevents multiple `Week` rows with the same Monday date when multiple goals share overlapping calendar schedules.
+
+### Interface Changes — `IWeekRepository`
+- **Add**: `Task<WeekEntity?> GetByStartDateAsync(DateTime startDate, CancellationToken ct = default);`
+- **Add**: `Task AddWeekGoalAsync(WeekGoalEntity weekGoal, CancellationToken ct = default);`
+- **Keep**: `Task AddAsync(WeekEntity week, WeekGoalEntity weekGoal, CancellationToken ct = default);` — still used for the new-week path.
+
+### Handler Logic — `GenerateHabitsCommandHandler` (loop body replacement)
+```csharp
+int weekGoalNumber = 0;
+foreach (var weekDto in feasible.Schedule)
+{
+    weekGoalNumber++;
+    var existingWeek = await weekRepository.GetByStartDateAsync(weekDto.StartDate, cancellationToken);
+    WeekGoalEntity weekGoal;
+    if (existingWeek is null)
+    {
+        var newWeek = WeekEntity.Create(weekDto.WeekNumber, weekDto.StartDate);
+        weekGoal = WeekGoalEntity.Create(newWeek.WeekId, goal.GoalId, weekGoalNumber);
+        await weekRepository.AddAsync(newWeek, weekGoal, cancellationToken);
+    }
+    else
+    {
+        weekGoal = WeekGoalEntity.Create(existingWeek.WeekId, goal.GoalId, weekGoalNumber);
+        await weekRepository.AddWeekGoalAsync(weekGoal, cancellationToken);
+    }
+    var weekDeadline = weekDto.StartDate.AddDays(6);
+    var habits = weekDto.Habits
+        .Select(h => HabitEntity.Create(weekGoal.WeekGoalId, h.Description, h.Description, h.Value, h.Unit, weekDeadline))
+        .ToList();
+    await habitRepository.AddRangeAsync(habits, cancellationToken);
+}
+```
+
+---
+
+## P10.4 Infrastructure Changes
+
+### EF Core Configuration
+- **`GoalConfiguration.cs`**: Add `builder.Property(e => e.StartDate);`
+- **`WeekGoalConfiguration.cs`**: Add `builder.Property(wg => wg.WeekGoalNumber);`
+
+### Repository Implementation — `WeekRepository.cs`
+```csharp
+public Task<WeekEntity?> GetByStartDateAsync(DateTime startDate, CancellationToken ct = default)
+    => db.Weeks.FirstOrDefaultAsync(w => w.StartDate.Date == startDate.Date, ct);
+
+public Task AddWeekGoalAsync(WeekGoalEntity weekGoal, CancellationToken ct = default)
+{
+    db.WeekGoals.Add(weekGoal);
+    return Task.CompletedTask;
+}
+```
+
+### Migration: `Phase10_TemporalAlignment`
+1. Add `StartDate` column to `Goals` table with default `2026-06-23` (Monday of migration week) for existing rows.
+2. Add `WeekGoalNumber` column to `WeekGoals` table with default `0` for existing rows.
+3. Backfill `WeekGoalNumber` via raw SQL window function:
+```sql
+UPDATE WeekGoals SET WeekGoalNumber = (
+    SELECT rn FROM (
+        SELECT WeekGoalId,
+               ROW_NUMBER() OVER (PARTITION BY GoalId ORDER BY (SELECT StartDate FROM Weeks WHERE WeekId = WeekGoals.WeekId)) AS rn
+        FROM WeekGoals
+    ) WHERE WeekGoalId = WeekGoals.WeekGoalId
+);
+```
+
+---
+
+## P10.5 TDD Invariants
+
+### Domain Unit Tests — `GoalStartDateTests.cs` (new)
+- **Theory (7 cases):** All days of the week → correct StartDate Monday. Verified with `Goal.CalculateStartDate()`.
+  - Sunday  2026-06-14 → 2026-06-15 (next Monday)
+  - Monday  2026-06-15 → 2026-06-15 (same day)
+  - Tuesday 2026-06-16 → 2026-06-22 (next Monday)
+  - Wednesday 2026-06-17 → 2026-06-22
+  - Thursday 2026-06-18 → 2026-06-22
+  - Friday  2026-06-19 → 2026-06-22
+  - Saturday 2026-06-20 → 2026-06-22
+  - *Note: 2026-06-15 is confirmed Monday (Jan 1 2026 = Thursday; +165 days = Monday). Initial plan draft had incorrect dates — corrected during implementation.*
+- **Fact:** `Goal.Create(..., creationDate)` stores the computed `StartDate` accessible on the returned aggregate.
+- **Fact:** `StartDate.DayOfWeek` is always `Monday`.
+- **Fact:** `StartDate.TimeOfDay` is always `TimeSpan.Zero` (time component stripped).
+
+### Updates to Existing Tests (compilation fixes)
+`Goal.Create()` and `WeekGoal.Create()` signature changes required updates across **13 files**:
+
+`Goal.Create()` — add `DateTime creationDate` argument:
+- `tests/LifeGrid.Domain.Tests/Goal/GoalTests.cs`
+- `tests/LifeGrid.Domain.Tests/Goal/GoalRefinementAnswerTests.cs`
+- `tests/LifeGrid.Domain.Tests/Vice/GoalLinkedBadHabitsTests.cs`
+- `tests/LifeGrid.Application.Tests/Habit/GenerateHabitsCommandTests.cs`
+- `tests/LifeGrid.Application.Tests/Vice/GetViceSurveyQuestionsQueryTests.cs`
+- `tests/LifeGrid.Application.Tests/Vice/SubmitViceSurveyCommandTests.cs`
+- `tests/LifeGrid.Infrastructure.Tests/Data/WeekRepositoryTests.cs`
+- `tests/LifeGrid.Infrastructure.Tests/Data/HabitRepositoryTests.cs`
+- `tests/LifeGrid.Infrastructure.Tests/Data/FactoryResetServiceTests.cs`
+- `tests/LifeGrid.Infrastructure.Tests/Schema/GoalSchemaTests.cs`
+- `tests/LifeGrid.Infrastructure.Tests/Schema/GoalRefinementAnswerSchemaTests.cs`
+
+`WeekGoal.Create()` — add `int weekGoalNumber` argument:
+- `tests/LifeGrid.Domain.Tests/Habit/HabitEntityTests.cs`
+- `tests/LifeGrid.Application.Tests/Hud/GetHudTelemetryQueryTests.cs`
+- `tests/LifeGrid.Infrastructure.Tests/Data/WeekRepositoryTests.cs`
+- `tests/LifeGrid.Infrastructure.Tests/Data/HabitRepositoryTests.cs`
+- `tests/LifeGrid.Infrastructure.Tests/Data/FactoryResetServiceTests.cs`
+
+### New Application Tests — `GenerateHabitsCommandTests.cs`
+- `ExistingWeekForStartDate_ReusesWeekId_CallsAddWeekGoalAsync` — when `GetByStartDateAsync` returns an existing week, `AddAsync(week, weekGoal)` is NOT called; `AddWeekGoalAsync` IS called.
+- `WeekGoalNumber_IsOneForSingleWeekSchedule` — `WeekGoalEntity` passed to the repo has `WeekGoalNumber == 1`.
+
+### New Infrastructure Tests — `WeekRepositoryTests.cs` additions
+- `GetByStartDateAsync_WhenWeekExists_ReturnsIt`
+- `GetByStartDateAsync_WhenNoneExists_ReturnsNull`
+- `AddWeekGoalAsync_PersistsAfterCommit`
+
+### New Infrastructure Integration Test — `WeekDeduplicationTests.cs` (new file)
+- Seed two distinct goals.
+- Persist two `WeekGoal` records both linked to a `Week` with the same `StartDate` (simulating `AddAsync` then `AddWeekGoalAsync` pattern).
+- Assert `_db.Weeks.Count() == 1`.
+- Assert both `WeekGoal` records share the same `WeekId`.
+- Assert `WeekGoalNumber` values are `1` and `2`.
+
+---
+
+## P10.6 Acceptance Criteria
+
+- `dotnet build LifeGrid.slnx` → 0 errors (3 pre-existing MAUI-generated `CS0612` warnings on `ViceSurveyPage.xaml` are not caused by Phase 10).
+- `dotnet test` → all 213 tests pass (193 prior + 20 new Phase 10 tests).
+- A `Goal` created on any day of the week has `StartDate` set to a Monday.
+- A `Goal` created on a Monday has `StartDate == creationDate.Date`.
+- When two goals are processed by `GenerateHabitsCommand` with overlapping week dates, the `Weeks` table contains exactly one row per unique Monday `StartDate`.
+- `WeekGoal.WeekGoalNumber` values are sequential starting at 1 for each goal's schedule.
+- Existing data is preserved; `WeekGoalNumber` is backfilled retroactively by the migration.
+
+**Post-implementation note — test date correction:** The initial plan draft listed `2026-06-15` as Sunday and `2026-06-16` as Monday. These are incorrect: `2026-06-15` is a Monday and `2026-06-16` is a Tuesday. The `CalculateStartDate` formula was correct; only the test `InlineData` fixtures needed correcting. The final test suite uses the verified dates above.

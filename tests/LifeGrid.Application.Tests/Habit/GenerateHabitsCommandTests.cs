@@ -48,7 +48,8 @@ public sealed class GenerateHabitsCommandTests
     {
         var goal = GoalAggregate.Create(
             userId, "Run a marathon", "Physical", "6 months",
-            new DateTime(2026, 12, 10, 0, 0, 0, DateTimeKind.Utc));
+            new DateTime(2026, 12, 10, 0, 0, 0, DateTimeKind.Utc),
+            new DateTime(2026, 6, 16)); // Tuesday — StartDate = 2026-06-22 (next Monday)
         goal.SetRefinementAnswers(new[] { (1, "What is your baseline?", (string?)"5k comfortable") });
         return goal;
     }
@@ -276,6 +277,64 @@ public sealed class GenerateHabitsCommandTests
         await _handler.Handle(new GenerateHabitsCommand(), default);
 
         profile.Economy.ShieldsAvailable.Should().Be(0);
+    }
+
+    // ── deduplication ────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ExistingWeekForStartDate_ReusesWeekId_CallsAddWeekGoalAsync()
+    {
+        var profile = UserProfileEntity.Create();
+        var goal    = SampleGoal(profile.UserId);
+        var session = SessionAtExecutionVerified();
+
+        var existingWeek = WeekEntity.Create(1, SampleSchedule[0].StartDate);
+        _weekRepo.GetByStartDateAsync(Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+                 .Returns(existingWeek);
+
+        _onboarding.GetActiveSessionAsync(Arg.Any<CancellationToken>()).Returns(session);
+        _onboarding.UpsertAsync(Arg.Any<OnboardingSession>(), Arg.Any<CancellationToken>())
+                   .Returns(x => x.Arg<OnboardingSession>());
+        _userProfiles.GetSingleAsync(Arg.Any<CancellationToken>()).Returns(profile);
+        _goals.GetByUserIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(goal);
+        _aiService.GenerateScheduleAsync(
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Result<HabitSchedulingResult>.Success(FeasibleResult));
+
+        await _handler.Handle(new GenerateHabitsCommand(), default);
+
+        await _weekRepo.DidNotReceive().AddAsync(
+            Arg.Any<WeekEntity>(), Arg.Any<WeekGoalEntity>(), Arg.Any<CancellationToken>());
+        await _weekRepo.Received(1).AddWeekGoalAsync(
+            Arg.Any<WeekGoalEntity>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task WeekGoalNumber_IsOneForSingleWeekSchedule()
+    {
+        var profile = UserProfileEntity.Create();
+        var goal    = SampleGoal(profile.UserId);
+        var session = SessionAtExecutionVerified();
+
+        WeekGoalEntity? capturedWeekGoal = null;
+
+        _onboarding.GetActiveSessionAsync(Arg.Any<CancellationToken>()).Returns(session);
+        _onboarding.UpsertAsync(Arg.Any<OnboardingSession>(), Arg.Any<CancellationToken>())
+                   .Returns(x => x.Arg<OnboardingSession>());
+        _userProfiles.GetSingleAsync(Arg.Any<CancellationToken>()).Returns(profile);
+        _goals.GetByUserIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(goal);
+        _aiService.GenerateScheduleAsync(
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Result<HabitSchedulingResult>.Success(FeasibleResult));
+        await _weekRepo.AddAsync(
+            Arg.Any<WeekEntity>(),
+            Arg.Do<WeekGoalEntity>(wg => capturedWeekGoal = wg),
+            Arg.Any<CancellationToken>());
+
+        await _handler.Handle(new GenerateHabitsCommand(), default);
+
+        capturedWeekGoal.Should().NotBeNull();
+        capturedWeekGoal!.WeekGoalNumber.Should().Be(1);
     }
 
     // ── wiring helper ─────────────────────────────────────────────────────────

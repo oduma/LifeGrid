@@ -59,7 +59,7 @@ public sealed class HabitEntityTests
     [Fact]
     public void WeekGoal_Create_SetsPenaltyStateToClean()
     {
-        var weekGoal = WeekGoalEntity.Create(Guid.NewGuid(), Guid.NewGuid());
+        var weekGoal = WeekGoalEntity.Create(Guid.NewGuid(), Guid.NewGuid(), 1);
 
         weekGoal.PenaltyState.Should().Be(PenaltyState.Clean);
     }
@@ -67,7 +67,7 @@ public sealed class HabitEntityTests
     [Fact]
     public void WeekGoal_Create_SetsDefaultGpAndXpToZero()
     {
-        var weekGoal = WeekGoalEntity.Create(Guid.NewGuid(), Guid.NewGuid());
+        var weekGoal = WeekGoalEntity.Create(Guid.NewGuid(), Guid.NewGuid(), 1);
 
         weekGoal.GoalWeeklyGp.Should().Be(0.0);
         weekGoal.GoalWeeklyXpEarned.Should().Be(0);
@@ -79,7 +79,7 @@ public sealed class HabitEntityTests
         var weekId = Guid.NewGuid();
         var goalId = Guid.NewGuid();
 
-        var weekGoal = WeekGoalEntity.Create(weekId, goalId);
+        var weekGoal = WeekGoalEntity.Create(weekId, goalId, 1);
 
         weekGoal.WeekId.Should().Be(weekId);
         weekGoal.GoalId.Should().Be(goalId);

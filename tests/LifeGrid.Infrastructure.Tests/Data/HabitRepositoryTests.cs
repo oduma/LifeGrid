@@ -42,12 +42,13 @@ public sealed class HabitRepositoryTests : IDisposable
         await _db.SaveChangesAsync();
 
         var goal = Goal.Create(profile.UserId, "Run a marathon", "Physical", "6 months",
-            new DateTime(2026, 12, 10, 0, 0, 0, DateTimeKind.Utc));
+            new DateTime(2026, 12, 10, 0, 0, 0, DateTimeKind.Utc),
+            new DateTime(2026, 6, 16));
         _db.Goals.Add(goal);
         await _db.SaveChangesAsync();
 
         var week     = WeekEntity.Create(1, new DateTime(2026, 6, 16));
-        var weekGoal = WeekGoalEntity.Create(week.WeekId, goal.GoalId);
+        var weekGoal = WeekGoalEntity.Create(week.WeekId, goal.GoalId, 1);
         _db.Weeks.Add(week);
         _db.WeekGoals.Add(weekGoal);
         await _db.SaveChangesAsync();
@@ -101,7 +102,7 @@ public sealed class HabitRepositoryTests : IDisposable
 
         // Seed a second week/weekgoal
         var week2     = WeekEntity.Create(2, new DateTime(2026, 6, 23));
-        var weekGoal2 = WeekGoalEntity.Create(week2.WeekId, goalId);
+        var weekGoal2 = WeekGoalEntity.Create(week2.WeekId, goalId, 2);
         _db.Weeks.Add(week2);
         _db.WeekGoals.Add(weekGoal2);
         await _db.SaveChangesAsync();

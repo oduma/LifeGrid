@@ -70,7 +70,8 @@ public sealed class FinalizeGoalCommandHandler(
             dto.Description,
             dto.AmbientTag,
             dto.Duration,
-            dto.DeadlineDate);
+            dto.DeadlineDate,
+            DateTime.Now);
 
         var answerLookup = request.UserAnswers.ToDictionary(a => a.RankOrder, a => a.Answer);
         var refinementItems = questions.Select(q =>

@@ -40,6 +40,9 @@ namespace LifeGrid.Infrastructure.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime>("StartDate")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -196,6 +199,9 @@ namespace LifeGrid.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(30)
                         .HasColumnType("TEXT");
+
+                    b.Property<int>("WeekGoalNumber")
+                        .HasColumnType("INTEGER");
 
                     b.Property<Guid>("WeekId")
                         .HasColumnType("TEXT");

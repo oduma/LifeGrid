@@ -12,7 +12,8 @@ public sealed class GoalRefinementAnswerTests
             description:  "Run a marathon",
             ambientTag:   "Physical",
             duration:     "6 months",
-            deadlineDate: new DateTime(2027, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+            deadlineDate: new DateTime(2027, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            creationDate: DateTime.Now);
 
     [Fact]
     public void SetRefinementAnswers_CreatesOwnedCollection()

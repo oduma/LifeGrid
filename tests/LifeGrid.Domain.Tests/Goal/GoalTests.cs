@@ -12,7 +12,8 @@ public sealed class GoalTests
             description:  "Run a marathon",
             ambientTag:   "Fitness",
             duration:     "6 months",
-            deadlineDate: DateTime.UtcNow.AddMonths(6));
+            deadlineDate: DateTime.UtcNow.AddMonths(6),
+            creationDate: DateTime.Now);
 
     [Fact]
     public void Create_GeneratesNonEmptyGoalId()

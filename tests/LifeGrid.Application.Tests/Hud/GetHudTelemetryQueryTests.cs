@@ -64,8 +64,8 @@ public sealed class GetHudTelemetryQueryTests
         _profileRepo.GetSingleAsync(Arg.Any<CancellationToken>()).Returns(profile);
 
         var week = WeekEntity.Create(1, new DateTime(2026, 6, 16, 0, 0, 0, DateTimeKind.Utc));
-        var wg1  = WeekGoalEntity.Create(week.WeekId, Guid.NewGuid());
-        var wg2  = WeekGoalEntity.Create(week.WeekId, Guid.NewGuid());
+        var wg1  = WeekGoalEntity.Create(week.WeekId, Guid.NewGuid(), 1);
+        var wg2  = WeekGoalEntity.Create(week.WeekId, Guid.NewGuid(), 2);
         wg1.SetGoalWeeklyGp(2.0);
         wg2.SetGoalWeeklyGp(4.0);
         week.AddWeekGoal(wg1);
@@ -85,8 +85,8 @@ public sealed class GetHudTelemetryQueryTests
         _profileRepo.GetSingleAsync(Arg.Any<CancellationToken>()).Returns(profile);
 
         var week = WeekEntity.Create(1, new DateTime(2026, 6, 16, 0, 0, 0, DateTimeKind.Utc));
-        var wg1  = WeekGoalEntity.Create(week.WeekId, Guid.NewGuid());
-        var wg2  = WeekGoalEntity.Create(week.WeekId, Guid.NewGuid());
+        var wg1  = WeekGoalEntity.Create(week.WeekId, Guid.NewGuid(), 1);
+        var wg2  = WeekGoalEntity.Create(week.WeekId, Guid.NewGuid(), 2);
         wg1.SetGoalWeeklyXpEarned(100);
         wg2.SetGoalWeeklyXpEarned(150);
         week.AddWeekGoal(wg1);
