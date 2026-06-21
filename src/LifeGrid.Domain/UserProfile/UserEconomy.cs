@@ -19,6 +19,9 @@ public sealed class UserEconomy
     public int    ShieldsAvailable  { get; private set; }
     public int    MaxShieldCap      { get; private set; }
 
+    internal void GrantXp(int amount)   => LifetimeXp += amount;
+    internal void DeductXp(int amount)  => LifetimeXp = Math.Max(0, LifetimeXp - amount);
+
     internal void GrantShield()
     {
         if (ShieldsAvailable < MaxShieldCap)

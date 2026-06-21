@@ -25,4 +25,9 @@ internal sealed class GoalRepository(LifeGridDbContext db) : IGoalRepository
     public Task<int> GetActiveCountAsync(Guid userId, CancellationToken ct = default)
         => db.Goals
              .CountAsync(g => g.UserId == userId && g.Status == GoalStatus.Active, ct);
+
+    public Task<GoalAggregate?> GetByIdAsync(Guid goalId, CancellationToken ct = default)
+        => db.Goals
+             .Include(g => g.RefinementAnswers)
+             .FirstOrDefaultAsync(g => g.GoalId == goalId, ct);
 }

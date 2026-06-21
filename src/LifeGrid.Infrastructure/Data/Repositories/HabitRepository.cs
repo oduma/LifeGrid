@@ -17,4 +17,14 @@ internal sealed class HabitRepository(LifeGridDbContext db) : IHabitRepository
         => await db.Habits
             .Where(h => h.WeekGoalId == weekGoalId)
             .ToListAsync(ct);
+
+    public async Task RemoveByWeekGoalIdsAsync(
+        IReadOnlyList<Guid> weekGoalIds, CancellationToken ct = default)
+    {
+        if (weekGoalIds.Count == 0) return;
+        var habits = await db.Habits
+            .Where(h => weekGoalIds.Contains(h.WeekGoalId))
+            .ToListAsync(ct);
+        db.Habits.RemoveRange(habits);
+    }
 }

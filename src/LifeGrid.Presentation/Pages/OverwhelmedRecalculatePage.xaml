@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:converters="clr-namespace:LifeGrid.Presentation.Converters"
+    x:Class="LifeGrid.Presentation.Pages.OverwhelmedRecalculatePage"
+    Title="Overwhelmed"
+    BackgroundColor="{StaticResource Background}">
+
+    <ContentPage.Resources>
+        <converters:InverseBoolConverter x:Key="InverseBoolConverter" />
+    </ContentPage.Resources>
+
+    <ScrollView>
+        <VerticalStackLayout Padding="24" Spacing="24">
+
+            <!-- Section header -->
+            <Label
+                Text="RECALCULATE SCHEDULE"
+                FontFamily="{StaticResource FontDMMono}"
+                FontSize="14"
+                FontAttributes="Bold"
+                TextColor="{StaticResource Primary}"
+                CharacterSpacing="2" />
+
+            <!-- Context prompt -->
+            <Label
+                Text="Why are you overwhelmed?"
+                FontFamily="{StaticResource FontShareTechMono}"
+                FontSize="12"
+                TextColor="{StaticResource OnSurface}"
+                Opacity="0.7" />
+
+            <!-- Multi-line comment input -->
+            <Border
+                StrokeShape="RoundRectangle 2"
+                StrokeThickness="1"
+                Stroke="{StaticResource SurfaceBrush}"
+                BackgroundColor="{StaticResource Surface}">
+                <Editor
+                    Text="{Binding OverwhelmedComment}"
+                    Placeholder="Explain what is making this goal too demanding right now. The AI will use your context to generate a more manageable schedule."
+                    PlaceholderColor="{StaticResource OnSurface}"
+                    FontFamily="{StaticResource FontShareTechMono}"
+                    FontSize="13"
+                    TextColor="{StaticResource OnSurface}"
+                    MinimumHeightRequest="140"
+                    Margin="12" />
+            </Border>
+
+            <!-- Penalty warning -->
+            <Border
+                StrokeShape="RoundRectangle 2"
+                StrokeThickness="1"
+                Stroke="#FF1B77"
+                BackgroundColor="{StaticResource Surface}"
+                Padding="12,10">
+                <Label
+                    Text="Extending the deadline by 25% will cost 100 XP."
+                    FontFamily="{StaticResource FontShareTechMono}"
+                    FontSize="12"
+                    TextColor="#FF1B77" />
+            </Border>
+
+            <!-- Recalculate button -->
+            <Button
+                Text="RECALCULATE SCHEDULE"
+                Command="{Binding RecalculateCommand}"
+                IsEnabled="{Binding IsLoading, Converter={StaticResource InverseBoolConverter}}"
+                FontFamily="{StaticResource FontDMMono}"
+                FontSize="13"
+                FontAttributes="Bold"
+                CharacterSpacing="1" />
+
+            <!-- Loading state -->
+            <VerticalStackLayout
+                IsVisible="{Binding IsLoading}"
+                Spacing="12"
+                HorizontalOptions="Center">
+                <ActivityIndicator
+                    IsRunning="{Binding IsLoading}"
+                    Color="{StaticResource Primary}"
+                    HorizontalOptions="Center" />
+                <Label
+                    Text="Contacting AI scheduler..."
+                    FontFamily="{StaticResource FontShareTechMono}"
+                    FontSize="12"
+                    TextColor="{StaticResource OnSurface}"
+                    Opacity="0.6"
+                    HorizontalTextAlignment="Center" />
+            </VerticalStackLayout>
+
+        </VerticalStackLayout>
+    </ScrollView>
+
+</ContentPage>

@@ -43,6 +43,8 @@ public static class MauiProgram
         builder.Services.AddTransient<UserSetupPage>();
         builder.Services.AddTransient<ViceSurveyViewModel>();
         builder.Services.AddTransient<ViceSurveyPage>();
+        builder.Services.AddTransient<OverwhelmedRecalculateViewModel>();
+        builder.Services.AddTransient<OverwhelmedRecalculatePage>();
 
 #if DEBUG
         builder.Logging.AddDebug();

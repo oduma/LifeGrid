@@ -31,4 +31,32 @@ internal sealed class WeekRepository(LifeGridDbContext db) : IWeekRepository
 
     public Task<int> GetWeekGoalCountByGoalIdAsync(Guid goalId, CancellationToken ct = default)
         => db.WeekGoals.CountAsync(wg => wg.GoalId == goalId, ct);
+
+    public async Task<IReadOnlyList<WeekGoalEntity>> GetFutureWeekGoalsByGoalIdAsync(
+        Guid goalId, DateTime afterDate, CancellationToken ct = default)
+        => await db.WeekGoals
+                   .Where(wg => wg.GoalId == goalId &&
+                                db.Weeks.Any(w => w.WeekId == wg.WeekId && w.StartDate > afterDate))
+                   .ToListAsync(ct);
+
+    public Task RemoveWeekGoalRangeAsync(
+        IReadOnlyList<WeekGoalEntity> weekGoals, CancellationToken ct = default)
+    {
+        db.WeekGoals.RemoveRange(weekGoals);
+        return Task.CompletedTask;
+    }
+
+    public async Task<int> GetMaxWeekGoalNumberAsync(Guid goalId, CancellationToken ct = default)
+    {
+        var max = await db.WeekGoals
+                          .Where(wg => wg.GoalId == goalId)
+                          .Select(wg => (int?)wg.WeekGoalNumber)
+                          .MaxAsync(ct);
+        return max ?? 0;
+    }
+
+    public Task<int> GetHistoricalXpByGoalIdAsync(Guid goalId, CancellationToken ct = default)
+        => db.WeekGoals
+             .Where(wg => wg.GoalId == goalId)
+             .SumAsync(wg => wg.GoalWeeklyXpEarned, ct);
 }

@@ -20,6 +20,9 @@ public sealed class UserProfile
     public bool                           IsViceSurveyCompleted  { get; private set; }
     public IReadOnlyCollection<UserBadge> Badges                 => _badges.AsReadOnly();
 
+    public void GrantXp(int amount)  => Economy.GrantXp(amount);
+    public void DeductXp(int amount) => Economy.DeductXp(amount);
+
     public void GrantBonusShield() => Economy.GrantShield();
 
     public void GrantSurveyBonusShield()

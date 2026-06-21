@@ -42,6 +42,18 @@ public sealed class Goal
     public IReadOnlyCollection<LinkedBadHabit>       LinkedBadHabits   => _linkedBadHabits.AsReadOnly();
     public IReadOnlyCollection<GoalRefinementAnswer> RefinementAnswers => _refinementAnswers.AsReadOnly();
 
+    public void MarkAbandoned() => Status = GoalStatus.Abandoned;
+
+    public void ExtendDeadlineByPercent(double percent)
+    {
+        var extensionDays = (DeadlineDate - StartDate).TotalDays * (percent / 100.0);
+        DeadlineDate      = DeadlineDate.AddDays(Math.Round(extensionDays));
+        var totalDays     = (int)Math.Round((DeadlineDate - StartDate).TotalDays);
+        Duration          = totalDays >= 30
+            ? $"{(int)Math.Round(totalDays / 30.44)} months"
+            : $"{(int)Math.Ceiling(totalDays / 7.0)} weeks";
+    }
+
     public void SetRefinementAnswers(IEnumerable<(int rankOrder, string question, string? answer)> items)
     {
         _refinementAnswers.Clear();

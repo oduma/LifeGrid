@@ -8,4 +8,5 @@ public interface IGoalRepository
     Task<GoalAggregate?> GetByUserIdAsync(Guid userId, CancellationToken ct = default);
     Task<IReadOnlyList<GoalAggregate>> GetAllByUserIdAsync(Guid userId, CancellationToken ct = default);
     Task<int> GetActiveCountAsync(Guid userId, CancellationToken ct = default);
+    Task<GoalAggregate?> GetByIdAsync(Guid goalId, CancellationToken ct = default);
 }

@@ -10,4 +10,8 @@ public interface IWeekRepository
     Task<WeekEntity?> GetActiveAsync(CancellationToken ct = default);
     Task<WeekEntity?> GetByStartDateAsync(DateTime startDate, CancellationToken ct = default);
     Task<int> GetWeekGoalCountByGoalIdAsync(Guid goalId, CancellationToken ct = default);
+    Task<IReadOnlyList<WeekGoalEntity>> GetFutureWeekGoalsByGoalIdAsync(Guid goalId, DateTime afterDate, CancellationToken ct = default);
+    Task RemoveWeekGoalRangeAsync(IReadOnlyList<WeekGoalEntity> weekGoals, CancellationToken ct = default);
+    Task<int> GetMaxWeekGoalNumberAsync(Guid goalId, CancellationToken ct = default);
+    Task<int> GetHistoricalXpByGoalIdAsync(Guid goalId, CancellationToken ct = default);
 }

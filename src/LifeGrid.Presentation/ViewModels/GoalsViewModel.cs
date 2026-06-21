@@ -34,4 +34,33 @@ public partial class GoalsViewModel(IMediator mediator) : ObservableObject
         await mediator.Send(new StartNewGoalSessionCommand());
         await Shell.Current.GoToAsync("setup");
     }
+
+    [RelayCommand]
+    private async Task AbandonGoalSwipeAsync(Guid goalId)
+    {
+        var xpResult = await mediator.Send(new GetGoalHistoricalXpQuery(goalId));
+        if (!xpResult.IsSuccess) return;
+
+        var totalPenalty = xpResult.Value + 100;
+        var confirmed    = await Shell.Current.CurrentPage.DisplayAlertAsync(
+            "Abandon Goal",
+            $"Warning: You will lose {totalPenalty} XP (all XP earned from this goal + 100 XP penalty).",
+            "Abandon Forever",
+            "Cancel");
+
+        if (!confirmed) return;
+
+        var result = await mediator.Send(new AbandonGoalCommand(goalId));
+        if (!result.IsSuccess)
+        {
+            await Shell.Current.CurrentPage.DisplayAlertAsync("Error", result.Error ?? "Could not abandon goal.", "OK");
+            return;
+        }
+
+        await LoadAsync();
+    }
+
+    [RelayCommand]
+    private async Task ExtendScheduleSwipeAsync(Guid goalId)
+        => await Shell.Current.GoToAsync($"overwhelmed-recalculate?goalId={goalId}");
 }

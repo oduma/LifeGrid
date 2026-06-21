@@ -2119,3 +2119,154 @@ Value labels: Share Tech Mono, 14sp, Bold.
 - TOTAL WKS value is rendered in Primary color (`#35f8db`).
 
 **Post-implementation correction — Zone C column alignment:** The initial spec did not prescribe individual column alignment. After implementation, the user requested the columns use the full card width. The final layout anchors DURATION with `HorizontalOptions="Start"`, DEADLINE with `HorizontalOptions="Center"` (labels also `HorizontalTextAlignment="Center"`), and TOTAL WKS with `HorizontalOptions="End"` (labels also `HorizontalTextAlignment="End"`). This replaces the default left-aligned behaviour for all three columns.
+
+---
+
+# Phase 12 — Goal Card Actions: The Overwhelmed Protocol
+
+**Source:** `docs/requirements/Phase-12-requirements.md`  
+**Plan:** `docs/plans/phase-12-overwhelmed-protocol.md`
+
+---
+
+## P12.1 Swipe Gesture Activation
+
+- Swipe gestures are available **only on Active status goal cards**. Cards with status Abandoned, Completed, or Overwhelmed do not present swipe items.
+- **Swipe Left** on an Active card triggers the **Option A: Abandon Goal** flow (destructive, red).
+- **Swipe Right** on an Active card triggers the **Option B: Recalculate Schedule** flow (warning, purple).
+- Command handlers early-exit with a no-op if the goal is no longer Active at execution time (guards against race conditions).
+
+---
+
+## P12.2 Option A: Abandon Goal Flow
+
+### P12.2.A Gesture & Confirmation
+1. Swiping left reveals an "ABANDON" `SwipeItem` with `BackgroundColor = Error (#FF1B77)`.
+2. Tapping "ABANDON" dispatches `GetGoalHistoricalXpQuery(goalId)` to compute the total XP earned from this goal (`SUM(GoalWeeklyXpEarned)` across all `WeekGoal` rows for that `GoalId`).
+3. `DisplayAlert` is shown: `"Warning: You will lose {historicalXP + 100} XP (All XP earned from this goal + 100 XP penalty)."` with buttons `"Abandon Forever"` / `"Cancel"`.
+4. If the user cancels, no mutation occurs.
+
+### P12.2.B AbandonGoalCommand — Atomic Handler (§2.1 of Phase-12-requirements.md)
+Executes in a single `CommitAsync` boundary:
+1. Load goal by `GoalId`; set `Goal.Status = GoalStatus.Abandoned` via `Goal.MarkAbandoned()`.
+2. Identify all `WeekGoal` rows where `GoalId = X` **AND** the associated `Week.StartDate > today (UTC date)** — these are "future incomplete" rows.
+3. For each identified `WeekGoal`, delete all linked `Habit` rows.
+4. Delete the identified `WeekGoal` rows.
+5. Calculate penalty: `total = historicalXP + 100`.
+6. Apply `UserProfile.DeductXp(total)` — floors at 0 (never negative XP). *(Q2: A)*
+7. `CommitAsync`.
+
+### P12.2.C Navigation
+After successful commit: navigate back to Goals list (`await Shell.Current.GoToAsync(".."); await LoadAsync()`).
+
+---
+
+## P12.3 Option B: Recalculate Schedule Flow
+
+### P12.3.A Gesture & Entry
+1. Swiping right reveals an "EXTEND" `SwipeItem` with `BackgroundColor = On-Secondary (#a20ba0)`.
+2. Tapping "EXTEND" navigates to `OverwhelmedRecalculatePage` with `goalId` passed as a Shell query parameter.
+
+### P12.3.B OverwhelmedRecalculatePage Layout (§3.3 of Phase-12-requirements.md, wf13.png)
+- Multi-line `Editor` with placeholder text prompting the user to explain why they are overwhelmed.
+- Warning label: `"Extending the deadline by 25% will cost 100 XP."`.
+- Primary `Button` "Recalculate Schedule" — disabled while loading.
+- `ActivityIndicator` (or equivalent loading state) displayed while the Gemini API call is in flight.
+
+### P12.3.C RecalculateGoalScheduleCommand — Handler (§2.2 of Phase-12-requirements.md)
+Takes `(Guid GoalId, string OverwhelmedComment)`. Executes in a single `CommitAsync` boundary:
+1. Load goal by `GoalId`; load UserProfile.
+2. **Deadline extension (Q1: A):**
+   - `extensionDays = (goal.DeadlineDate - goal.StartDate).TotalDays × 0.25`
+   - `newDeadline = goal.DeadlineDate + extensionDays` (rounded to whole days)
+   - `newDurationDays = (newDeadline - goal.StartDate).TotalDays`
+   - `newDurationText` derived from date arithmetic: months if ≥ 30 days, else weeks.
+   - Call `goal.ExtendDeadlineByPercent(25.0)` which encapsulates the above math.
+3. **Prune future habits (Q3: A — future only, current week preserved):**
+   - Identify `WeekGoal` rows where `GoalId = X` AND `Week.StartDate > today`.
+   - Delete all `Habit` rows linked to those `WeekGoal`s.
+   - Delete those `WeekGoal` rows.
+4. **AI recalculation (Q4: A — original answers + comment):**
+   - Build `baselineAnswersJson`: serialize `goal.RefinementAnswers` ordered by `RankOrder` as `[{ question, answer }]`, then append `{ question: "Why are you overwhelmed?", answer: overwhelmedComment }`.
+   - Call `IGeminiHabitGenerationService.GenerateScheduleAsync(goal.Description, newDeadline.ToString("yyyy-MM-dd"), baselineAnswersJson)`.
+   - If the result is `Infeasible`: return `Result.Failure`; do not commit.
+5. **Timeline injection:**
+   - Determine `maxExistingWeekGoalNumber` (max `WeekGoalNumber` remaining for this `GoalId` after pruning; 0 if none).
+   - For each `WeekScheduleDto` in the feasible schedule: create `Week` if none exists for `StartDate`; create `WeekGoal` (number = `maxExistingWeekGoalNumber + i`); create `Habit` rows.
+6. **Penalty:** `UserProfile.DeductXp(100)` — flat -100 XP, floored at 0.
+7. `CommitAsync`.
+8. After commit: navigate back to Goals list (`await Shell.Current.GoToAsync("../.."); GoalsViewModel.LoadAsync()`). *(Q5: A)*
+
+---
+
+## P12.4 Domain Mutations
+
+| Entity | New Method | Behaviour |
+|---|---|---|
+| `Goal` | `MarkAbandoned()` | Sets `Status = GoalStatus.Abandoned` |
+| `Goal` | `ExtendDeadlineByPercent(double pct)` | Computes extension days, updates `DeadlineDate`, resets `Duration` string from date math |
+| `UserEconomy` | `GrantXp(int amount)` | `LifetimeXp += amount` — added alongside DeductXp; required for domain correctness and test setup |
+| `UserEconomy` | `DeductXp(int amount)` | `LifetimeXp = Math.Max(0, LifetimeXp - amount)` |
+| `UserProfile` | `GrantXp(int amount)` | Delegates to `Economy.GrantXp(amount)` |
+| `UserProfile` | `DeductXp(int amount)` | Delegates to `Economy.DeductXp(amount)` |
+
+---
+
+## P12.5 New Repository Contracts
+
+| Interface | New Method | Purpose |
+|---|---|---|
+| `IGoalRepository` | `GetByIdAsync(Guid goalId)` | Load specific goal by primary key |
+| `IWeekRepository` | `GetFutureWeekGoalsByGoalIdAsync(Guid goalId, DateTime afterDate)` | Returns WeekGoals where associated Week.StartDate > afterDate |
+| `IWeekRepository` | `RemoveWeekGoalRangeAsync(IReadOnlyList<WeekGoal>)` | Marks WeekGoal rows for removal (no SaveChanges) |
+| `IWeekRepository` | `GetMaxWeekGoalNumberAsync(Guid goalId)` | Returns max WeekGoalNumber for the goal (0 if none) |
+| `IHabitRepository` | `RemoveByWeekGoalIdsAsync(IReadOnlyList<Guid>)` | Marks Habit rows for removal (no SaveChanges) |
+
+---
+
+## P12.6 New Application Queries & Commands
+
+| Artifact | Signature | Returns |
+|---|---|---|
+| `GetGoalHistoricalXpQuery` | `(Guid GoalId)` | `Result<int>` — sum of `GoalWeeklyXpEarned` |
+| `AbandonGoalCommand` | `(Guid GoalId)` | `Result` |
+| `RecalculateGoalScheduleCommand` | `(Guid GoalId, string OverwhelmedComment)` | `Result` |
+
+---
+
+## P12.7 TDD Invariants (verbatim from spec §4)
+
+- **Abandonment math:** Mock goal with `450 XP` historically earned → Option A must deduct exactly `550 XP` from `UserProfile.Economy.LifetimeXp`.
+- **Extension math:** Mock goal with `100-day` duration (start to deadline) → Option B must shift `DeadlineDate` by exactly `+25 days`.
+- **Penalty isolation:** The `-100 XP` penalty from Option B does not modify any `GoalWeeklyXpEarned` history record — it acts as a flat reduction against global `LifetimeXp` only.
+
+---
+
+## P12.8 Presentation Tests
+
+Deferred per established pattern. `SwipeView` bindings, `OverwhelmedRecalculateViewModel`, and the page's command routing reside in `net10.0-android` target and cannot be referenced from `net10.0` test projects. Follows the pattern documented in Phase 11 (P11.6) and the comment in `UserSetupViewModelTests.cs`.
+
+---
+
+## P12.9 Acceptance Criteria
+
+- `dotnet build LifeGrid.slnx` → 0 errors.
+- `dotnet test` → all prior 217 tests pass + new Phase 12 Application tests (total to be confirmed post-implementation).
+- Active goal cards display left/right swipe items; non-Active cards do not.
+- Option A confirmation alert displays the correct computed XP loss amount.
+- Option B page accepts a multi-line comment, shows the 100 XP warning, shows a loading indicator during the Gemini call.
+- After either resolution, the Goals list refreshes and reflects the updated goal status.
+
+**Post-implementation corrections:**
+
+1. **`CharacterSpacing` not `LetterSpacing`:** The MAUI `Label` and `Button` controls do not have a `LetterSpacing` property. The correct MAUI API is `CharacterSpacing`. Two occurrences in `OverwhelmedRecalculatePage.xaml` (section header `Label` and Recalculate `Button`) were corrected from `LetterSpacing` to `CharacterSpacing`.
+
+2. **`DisplayAlertAsync` not `DisplayAlert`:** `Page.DisplayAlert(...)` is marked `[Obsolete]` in MAUI .NET 10. All three call sites in `GoalsViewModel.cs` and `OverwhelmedRecalculateViewModel.cs` were corrected to `DisplayAlertAsync(...)`.
+
+3. **`GrantXp` added to domain:** `UserEconomy.GrantXp(int)` and `UserProfile.GrantXp(int)` were added alongside `DeductXp`. These are legitimate domain operations (XP is awarded for completing habits in future phases) and were also required to seed test state without bypassing encapsulation. Added to the domain mutation table in P12.4.
+
+4. **`IGoalRepository.UpdateAsync` not needed:** The plan listed a potential need for `UpdateAsync`. EF Core's change tracking detects mutations to loaded entities (`Goal.MarkAbandoned()`, `Goal.ExtendDeadlineByPercent()`) automatically on `CommitAsync`. No explicit `UpdateAsync` was added.
+
+5. **`GetByIdAsync` includes `RefinementAnswers`:** `GoalRepository.GetByIdAsync` uses `.Include(g => g.RefinementAnswers)` because `RefinementAnswers` is mapped as `OwnsMany` with a separate table (`GoalRefinementAnswers`) and is not auto-loaded. This ensures the baseline JSON for the Gemini recalculation is complete.
+
+**Final test count:** 245 total — 94 Domain + 87 Application + 64 Infrastructure (+28 new).

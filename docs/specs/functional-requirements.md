@@ -4,7 +4,7 @@ This document serves as the comprehensive, production-ready Functional Requireme
 
 ---
 
-## 1. User Setup & Onboarding Workflow
+## 1. User Setup & Onboarding Workflow (DONE)
 
 ### 1.1 The Settled Blueprint: Onboarding & Setup
 The setup architecture is designed to be mathematically clean, psychologically motivating, and highly resistant to system-gaming. Any user interaction recorded in the system will have to bear a timestamp.
@@ -263,7 +263,7 @@ The engine logically divides the calendar week into two distinct blocks: First P
 * Accessible from the top-level Interaction Hub for users who skipped it during onboarding. Completing it instantly credits the user with **1 Bonus "Life Happens Shield"** and applies the Cap Bypass Rule. Once processed, the action vanishes permanently.
 
 ### 4.2 Goal Level Interactions
-#### 4.2.1 Reduce the Load or Give Up
+#### 4.2.1 Reduce the Load or Give Up (DONE)
 The user triggers an explicit "Overwhelmed" action for a specific goal.
 * **Option A: Abandon Goal:** The target goal and all associated future habits are permanently cancelled. The engine revokes **100% of the XP** historically earned through that specific goal, **plus an additional flat penalty of -100 XP**. <file path="docs\specs\assets\wireframes\wf12.png">
 * **Option B: Recalculate Schedule (Overwhelmed State) (Extend Deadline):** The user provides a text comment. The AI extends the goal's overall `Deadline Date` and `Duration` by exactly **25%** and recalculates the remaining schedule, by passing it through <file path="docs\specs\assets\prompts\prompt2.1.txt"> and <file path="docs\specs\assets\prompts\prompt2.2.txt">. Passing the existing information with the extended deadline. The user incurs a flat penalty of **-100 XP**.<file path="docs\specs\assets\wireframes\wf13.png">

@@ -5,11 +5,13 @@
     xmlns:controls="clr-namespace:LifeGrid.Presentation.Controls"
     xmlns:converters="clr-namespace:LifeGrid.Presentation.Converters"
     x:Class="LifeGrid.Presentation.Pages.GoalsPage"
+    x:Name="Root"
     Title="Goals"
     BackgroundColor="{StaticResource Background}">
 
     <ContentPage.Resources>
-        <converters:StatusToColorConverter x:Key="StatusToColorConverter" />
+        <converters:StatusToColorConverter   x:Key="StatusToColorConverter" />
+        <converters:StatusIsActiveConverter  x:Key="StatusIsActiveConverter" />
     </ContentPage.Resources>
 
     <Grid RowDefinitions="*,Auto">
@@ -30,6 +32,29 @@
 
                 <CollectionView.ItemTemplate>
                     <DataTemplate>
+
+                        <!-- Swipe wrapper: left = Abandon (red), right = Extend (purple) -->
+                        <SwipeView IsEnabled="{Binding Status, Converter={StaticResource StatusIsActiveConverter}}">
+
+                            <SwipeView.LeftItems>
+                                <SwipeItems Mode="Execute">
+                                    <SwipeItem
+                                        Text="ABANDON"
+                                        BackgroundColor="#FF1B77"
+                                        Command="{Binding BindingContext.AbandonGoalSwipeCommand, Source={x:Reference Root}}"
+                                        CommandParameter="{Binding GoalId}" />
+                                </SwipeItems>
+                            </SwipeView.LeftItems>
+
+                            <SwipeView.RightItems>
+                                <SwipeItems Mode="Execute">
+                                    <SwipeItem
+                                        Text="EXTEND"
+                                        BackgroundColor="#a20ba0"
+                                        Command="{Binding BindingContext.ExtendScheduleSwipeCommand, Source={x:Reference Root}}"
+                                        CommandParameter="{Binding GoalId}" />
+                                </SwipeItems>
+                            </SwipeView.RightItems>
 
                         <!-- Card container: Surface bg, 2px radius, subtle border -->
                         <Border
@@ -134,6 +159,8 @@
 
                             </VerticalStackLayout>
                         </Border>
+
+                        </SwipeView>
 
                     </DataTemplate>
                 </CollectionView.ItemTemplate>
