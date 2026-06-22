@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using LifeGrid.Application.Goal;
 using LifeGrid.Application.Onboarding.Commands;
+using LifeGrid.Application.Timeline;
 using MediatR;
 using System.Collections.ObjectModel;
 
@@ -11,6 +12,8 @@ public partial class GoalsViewModel(IMediator mediator) : ObservableObject
 {
     public ObservableCollection<GoalSummaryItem> Goals { get; } = new();
 
+    // ── Data loading ──────────────────────────────────────────────────────────
+
     public async Task LoadAsync()
     {
         var result = await mediator.Send(new GetGoalsQuery());
@@ -18,15 +21,82 @@ public partial class GoalsViewModel(IMediator mediator) : ObservableObject
 
         Goals.Clear();
         foreach (var dto in result.Value!)
-            Goals.Add(new GoalSummaryItem(
-                dto.GoalId,
-                dto.Description,
-                dto.AmbientTag,
-                dto.Duration,
-                dto.DeadlineDate,
-                dto.Status,
-                dto.TotalWeeks));
+            Goals.Add(new GoalSummaryItem
+            {
+                GoalId       = dto.GoalId,
+                Description  = dto.Description,
+                AmbientTag   = dto.AmbientTag,
+                Duration     = dto.Duration,
+                DeadlineDate = dto.DeadlineDate,
+                Status       = dto.Status,
+                TotalWeeks   = dto.TotalWeeks,
+            });
     }
+
+    // ── Selection state ───────────────────────────────────────────────────────
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsMultiSelectMode))]
+    [NotifyPropertyChangedFor(nameof(IsAddGoalVisible))]
+    private GoalSelectionMode _selectionMode = GoalSelectionMode.Standard;
+
+    public bool IsMultiSelectMode             => SelectionMode == GoalSelectionMode.MultiSelect;
+    public bool IsAddGoalVisible              => !IsMultiSelectMode;
+    public bool IsViewFilteredTimelineVisible => IsMultiSelectMode && Goals.Any(g => g.IsSelected);
+
+    [RelayCommand]
+    private void EnterMultiSelect(GoalSummaryItem item)
+    {
+        SelectionMode   = GoalSelectionMode.MultiSelect;
+        item.IsSelected = true;
+        OnPropertyChanged(nameof(IsViewFilteredTimelineVisible));
+    }
+
+    [RelayCommand]
+    private void ToggleGoalSelection(GoalSummaryItem item)
+    {
+        item.IsSelected = !item.IsSelected;
+        OnPropertyChanged(nameof(IsViewFilteredTimelineVisible));
+    }
+
+    [RelayCommand]
+    private async Task NavigateToGoalTimelineAsync(GoalSummaryItem item)
+    {
+        if (IsMultiSelectMode)
+        {
+            ToggleGoalSelection(item);
+            return;
+        }
+        await Shell.Current.GoToAsync("//timeline",
+            new ShellNavigationQueryParameters
+            {
+                ["filterGoalIds"] = (IReadOnlyList<Guid>)new[] { item.GoalId }
+            });
+    }
+
+    [RelayCommand]
+    private async Task ViewFilteredTimelineAsync()
+    {
+        var ids = Goals.Where(g => g.IsSelected).Select(g => g.GoalId).ToList();
+        ResetSelectionState();
+        await Shell.Current.GoToAsync("//timeline",
+            new ShellNavigationQueryParameters
+            {
+                ["filterGoalIds"] = (IReadOnlyList<Guid>)ids
+            });
+    }
+
+    [RelayCommand]
+    private void ExitMultiSelect() => ResetSelectionState();
+
+    public void ResetSelectionState()
+    {
+        foreach (var g in Goals) g.IsSelected = false;
+        SelectionMode = GoalSelectionMode.Standard;
+        OnPropertyChanged(nameof(IsViewFilteredTimelineVisible));
+    }
+
+    // ── Swipe commands ────────────────────────────────────────────────────────
 
     [RelayCommand]
     private async Task AddGoalAsync()

@@ -13,7 +13,7 @@
         <converters:PenaltyStateToColorConverter x:Key="PenaltyStateToColorConverter" />
     </ContentPage.Resources>
 
-    <Grid RowDefinitions="*,Auto">
+    <Grid RowDefinitions="*,Auto,Auto">
 
         <CollectionView
             x:Name="WeeksCollection"
@@ -172,7 +172,15 @@
 
         </CollectionView>
 
-        <controls:AdBannerView Grid.Row="1" />
+        <!-- See all Goals — visible only when timeline is filtered -->
+        <Button
+            Grid.Row="1"
+            Text="See all Goals"
+            IsVisible="{Binding IsFilteredMode}"
+            Command="{Binding SeeAllGoalsCommand}"
+            Margin="16,8" />
+
+        <controls:AdBannerView Grid.Row="2" />
 
     </Grid>
 

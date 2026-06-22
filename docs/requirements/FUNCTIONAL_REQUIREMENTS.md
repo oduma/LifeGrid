@@ -2811,3 +2811,106 @@ Migration `Phase18_CleanupOnboardingSession`:
 - `OnboardingProgressCache` table has a single `GoalId` column; no `CachedGoalId`, `PendingGoalId`, or `IsComplete` columns.
 - After a successful goal creation the `OnboardingProgressCache` table is empty.
 - `App.xaml.cs` startup routing: existence of a session row (any) → navigate to `create-goal` (no `IsComplete` check).
+
+---
+
+# Phase 19 — Goal Selection & Timeline Filtering
+
+## Context
+The Goals view currently displays goals as a static list with swipe-to-abandon and swipe-to-extend gestures. The Timeline view displays all goal-weeks unconditionally. This phase adds interactive goal selection to the Goals view and drives a filtered state in the Timeline view, allowing users to focus on one or more goals at a time.
+
+---
+
+## P19.1 — GetTimelineQuery Filter Parameter
+
+`GetTimelineQuery` gains an optional `IReadOnlyList<Guid>? FilterGoalIds` parameter (default `null`).
+
+**Filtering logic in `GetTimelineQueryHandler`:**
+- If `FilterGoalIds` is null or empty → return the full unfiltered timeline (existing behaviour).
+- If `FilterGoalIds` is populated → for each week, retain only the `WeekGoal` items whose `GoalId` is in the filter set. Weeks that contain zero matching items after filtering are excluded from the result entirely.
+
+The filter is applied before DTO construction. `TimelineWeekGoalDto` requires no new fields.
+
+---
+
+## P19.2 — Goals View: Standard Mode (Single-Tap)
+
+A single tap on any Goal Card in Standard mode immediately navigates the user to the Timeline view, passing the tapped goal's `GoalId` as the sole filter parameter (`FilterGoalIds = [GoalId]`).
+
+Navigation uses `ShellNavigationQueryParameters` (object-based, not URL query string) to avoid GUID serialization.
+
+---
+
+## P19.3 — Goals View: MultiSelect Mode (Long-Press Entry)
+
+A long-press on any Goal Card transitions the view from `Standard` mode to `MultiSelect` mode and marks the pressed goal as selected. Long-press is implemented via a `LongPressBehavior` (`Behavior<View>`) that attaches to the Android native view's `LongClick` event through `Handler.PlatformView`. No additional NuGet packages are required.
+
+**Implementation note:** The behavior is attached to the `SwipeView` element (the outermost view in each DataTemplate cell), not to the inner `Border`. This is required because MAUI's `SwipeView` intercepts Android touch events for swipe detection; attaching `LongClick` to a child view inside it results in the listener never firing. Additionally, `RegisterNativeLongClick` is called immediately in `OnAttachedTo` — not only on the `HandlerChanged` event — because inside a `CollectionView` the MAUI handler is already connected to the native view by the time the behavior is applied, so `HandlerChanged` would never fire otherwise.
+
+---
+
+## P19.4 — Goals View: MultiSelect Interaction Rules
+
+While in `MultiSelect` mode:
+
+- **Single tap** toggles the selection state of the tapped goal (selected ↔ unselected). No navigation occurs.
+- **SwipeView gestures (Abandon/Extend)** are disabled to prevent accidental destructive actions.
+- A **checkbox icon** (`check_box` from MaterialSymbolsRounded) in the Primary accent colour appears on selected Goal Cards.
+- The **"Add Goal" button** is hidden and replaced by a **"View Filtered Timeline"** button (enabled only when ≥1 goal is selected) and a **"Cancel"** button.
+
+---
+
+## P19.5 — Goals View: MultiSelect Actions
+
+**"View Filtered Timeline"** (enabled when ≥1 goal is selected):
+1. Collects the `GoalId` array of all selected goals.
+2. Resets the Goals view to `Standard` mode (clears all `IsSelected` flags).
+3. Navigates to the Timeline view with the collected `GoalId` array as `FilterGoalIds`.
+
+**"Cancel"**:
+1. Clears all `IsSelected` flags.
+2. Resets the view to `Standard` mode.
+3. Restores the "Add Goal" button and swipe gestures.
+
+**MultiSelect reset on navigation**: When the Goals page becomes visible (`OnAppearing`), the view always resets to `Standard` mode and clears any prior selection. This handles the case where the user switches away via the tab bar and returns.
+
+---
+
+## P19.6 — Timeline View: Filtered State
+
+When the Timeline view receives `FilterGoalIds` via navigation parameters, it:
+- Stores the filter and sets `IsFilteredMode = true`.
+- Sends `GetTimelineQuery(FilterGoalIds)` → receives only the weeks and week-goal items matching the filter.
+- Displays the filtered result.
+
+When no `FilterGoalIds` are received (e.g., navigating directly via the tab bar), `IsFilteredMode = false` and the full timeline is shown.
+
+**Loading lifecycle (tab navigation):** For MAUI Shell *tab* navigation (as opposed to push navigation), `OnAppearing` fires **before** `ApplyQueryAttributes`. `OnAppearing` therefore loads with the previous (possibly stale) filter state. `ApplyQueryAttributes` runs immediately after, updates `_filterGoalIds` / `IsFilteredMode`, and then explicitly calls `_ = LoadAsync()` to reload with the correct filter. This fire-and-forget reload is the authoritative load for filtered navigations.
+
+---
+
+## P19.7 — Timeline View: "See all Goals" Action
+
+When `IsFilteredMode = true`, a persistent **"See all Goals"** button is rendered pinned between the scrolling list and the ad banner.
+
+Clicking it:
+1. Clears `FilterGoalIds`.
+2. Sets `IsFilteredMode = false` (hides the button).
+3. Re-executes `GetTimelineQuery` with no filter to reload the full dataset.
+4. Updates the list asynchronously without breaking the scroll context.
+
+---
+
+## P19.8 Acceptance Criteria
+
+- `dotnet build LifeGrid.slnx` → 0 errors.
+- `dotnet test` → **257 tests pass** (83 Domain + 110 Application including 5 new filter tests + 64 Infrastructure).
+- Single-tap on a Goal Card → Timeline shows only that goal's weeks; "See all Goals" button visible.
+- "See all Goals" → Timeline restores full view; button hidden.
+- Long-press on a Goal Card → MultiSelect mode active; card shows checkbox; "Add Goal" hidden; swipes disabled.
+- Tapping additional cards toggles their checkboxes.
+- "View Filtered Timeline" (enabled when ≥1 selected) → navigates to filtered Timeline; Goals resets to Standard mode.
+- "Cancel" → Standard mode restored; "Add Goal" visible; swipes re-enabled.
+
+**Status: DONE (implemented 2026-06-22)**
+- Switching tabs away and back to Goals → MultiSelect mode reset; Standard mode active.

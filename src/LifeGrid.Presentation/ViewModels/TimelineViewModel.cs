@@ -7,18 +7,48 @@ using GoalAggregate = LifeGrid.Domain.Goal.Goal;
 
 namespace LifeGrid.Presentation.ViewModels;
 
-public partial class TimelineViewModel(IMediator mediator) : ObservableObject
+public partial class TimelineViewModel(IMediator mediator) : ObservableObject, IQueryAttributable
 {
     private int               _currentWeekIndex = -1;
     private TimelineWeekItem? _selectedWeek;
+    private IReadOnlyList<Guid>? _filterGoalIds;
 
     public ObservableCollection<TimelineWeekItem> Weeks { get; } = new();
 
     public int CurrentWeekIndex => _currentWeekIndex;
 
+    [ObservableProperty]
+    private bool _isFilteredMode;
+
+    // Shell calls ApplyQueryAttributes AFTER OnAppearing for tab navigation.
+    // OnAppearing loads with the previous filter state; this method corrects it.
+    public void ApplyQueryAttributes(IDictionary<string, object> query)
+    {
+        if (query.TryGetValue("filterGoalIds", out var value) &&
+            value is IReadOnlyList<Guid> { Count: > 0 } ids)
+        {
+            _filterGoalIds = ids;
+            IsFilteredMode = true;
+        }
+        else
+        {
+            _filterGoalIds = null;
+            IsFilteredMode = false;
+        }
+        _ = LoadAsync();
+    }
+
+    [RelayCommand]
+    private async Task SeeAllGoalsAsync()
+    {
+        _filterGoalIds = null;
+        IsFilteredMode = false;
+        await LoadAsync();
+    }
+
     public async Task LoadAsync()
     {
-        var result = await mediator.Send(new GetTimelineQuery());
+        var result = await mediator.Send(new GetTimelineQuery(_filterGoalIds));
         if (!result.IsSuccess) return;
 
         Weeks.Clear();

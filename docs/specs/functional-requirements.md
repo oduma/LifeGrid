@@ -146,7 +146,7 @@ Main interaction screen wireframe:<file path=".\assets\wireframes\wf6.png">
 * **Temporal Visibility:** Users can scroll backward to review past performance or scroll forward to preview upcoming AI-scaled workloads.
 * **Wireframe** <file path=".\assets\wireframes\wf7.png"> 
 
-### 2.2 The Global Goal Selector (Focus Filter)
+### 2.2 The Global Goal Selector (Focus Filter) (done)
 * **Aggregate View (Default):** The default state displays the combined Weekly Habit Roster across *all* active goals, providing a comprehensive overview of the week's total required effort.
 * **Isolation Mode:** A prominent, frictionless Goal Selector allows the user to isolate a single Goal. 
 * **Dynamic UI Updates:** Selecting a specific goal filters the screen to show only the `Week_Goal_Items` and `Habits` associated with that goal, alongside a persistent, ambient warning indicator for any `Linked Bad Habits` threatening that specific objective.
@@ -272,7 +272,7 @@ The user triggers an explicit "Overwhelmed" action for a specific goal.
 * **Trigger:** Goal Progression (GP) falls below **50% for two consecutive weeks**.
 * **System Action:** The app bypasses the standard Interaction Hub and forces the user into the Overwhelmed resolution screen for the failing goal. They must choose Option A or Option B to continue using the app.
 
-#### 4.2.3 Goal Selection & Habit Filtering
+#### 4.2.3 Goal Selection & Habit Filtering (Done)
 * Single-goal tap isolates automatically navigated to the Timeline view with filter on their week goal items only for the selected goal and at the bottom of the view an action See all Goals. If the user clicks on See all Goals. the filter is destroyed and all the weekgoal items are displayed;  
 * Long-tapping allows multi-goal selection (Goals selected should be marked with a square checked box icon). As soon as one goal is selected at the bottom of the goals list an action named "View Filtererd Timeline" should appear if the user clicks on it they navigated to the Timeline view with filter on their week goal items only for the selected goal(s) and at the bottom of the view an action See all Goals. If the user clicks on See all Goals. the filter is destroyed and all the weekgoal items are displayed 
 

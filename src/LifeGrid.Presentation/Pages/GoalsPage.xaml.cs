@@ -16,6 +16,7 @@ public partial class GoalsPage : ContentPage
     protected override async void OnAppearing()
     {
         base.OnAppearing();
+        _viewModel.ResetSelectionState();
         await _viewModel.LoadAsync();
     }
 }

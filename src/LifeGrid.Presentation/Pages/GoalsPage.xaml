@@ -2,8 +2,10 @@
 <ContentPage
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:behaviors="clr-namespace:LifeGrid.Presentation.Behaviors"
     xmlns:controls="clr-namespace:LifeGrid.Presentation.Controls"
     xmlns:converters="clr-namespace:LifeGrid.Presentation.Converters"
+    xmlns:vm="clr-namespace:LifeGrid.Presentation.ViewModels"
     x:Class="LifeGrid.Presentation.Pages.GoalsPage"
     x:Name="Root"
     Title="Goals"
@@ -31,10 +33,18 @@
                 </CollectionView.EmptyView>
 
                 <CollectionView.ItemTemplate>
-                    <DataTemplate>
+                    <DataTemplate x:DataType="vm:GoalSummaryItem">
 
-                        <!-- Swipe wrapper: left = Abandon (red), right = Extend (purple) -->
-                        <SwipeView IsEnabled="{Binding Status, Converter={StaticResource StatusIsActiveConverter}}">
+                        <!-- Swipe wrapper: disabled in MultiSelect mode -->
+                        <SwipeView IsEnabled="{Binding Source={x:Reference Root}, Path=BindingContext.IsAddGoalVisible}">
+
+                            <!-- Long press is attached here (outermost Android view) so SwipeView's
+                                 touch handling cannot intercept before the LongClick listener fires. -->
+                            <SwipeView.Behaviors>
+                                <behaviors:LongPressBehavior
+                                    Command="{Binding Source={x:Reference Root}, Path=BindingContext.EnterMultiSelectCommand}"
+                                    CommandParameter="{Binding .}" />
+                            </SwipeView.Behaviors>
 
                             <SwipeView.LeftItems>
                                 <SwipeItems Mode="Execute">
@@ -65,10 +75,16 @@
                             StrokeThickness="1"
                             Stroke="{StaticResource SurfaceBrush}">
 
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer
+                                    Command="{Binding Source={x:Reference Root}, Path=BindingContext.NavigateToGoalTimelineCommand}"
+                                    CommandParameter="{Binding .}" />
+                            </Border.GestureRecognizers>
+
                             <VerticalStackLayout Spacing="8">
 
-                                <!-- Zone A: AmbientTag (left) | Status badge (right) -->
-                                <Grid ColumnDefinitions="*,Auto">
+                                <!-- Zone A: AmbientTag (left) | Status badge (centre) | Checkbox (right) -->
+                                <Grid ColumnDefinitions="*,Auto,Auto">
                                     <Label
                                         Grid.Column="0"
                                         Text="{Binding AmbientTag}"
@@ -89,6 +105,16 @@
                                             FontSize="11"
                                             TextColor="{Binding Status, Converter={StaticResource StatusToColorConverter}}" />
                                     </Border>
+                                    <!-- Selection checkbox — visible only when IsSelected -->
+                                    <Label
+                                        Grid.Column="2"
+                                        Text="&#xE834;"
+                                        FontFamily="MaterialSymbolsRounded"
+                                        FontSize="22"
+                                        TextColor="{StaticResource Primary}"
+                                        IsVisible="{Binding IsSelected}"
+                                        VerticalOptions="Center"
+                                        Margin="8,0,0,0" />
                                 </Grid>
 
                                 <!-- Zone B: Description — dominant DM Mono headline -->
@@ -167,11 +193,29 @@
 
             </CollectionView>
 
-            <Button
-                Grid.Row="1"
-                Text="Add Goal"
-                Command="{Binding AddGoalCommand}"
-                Margin="16,8" />
+            <!-- Bottom action row: toggles between Standard and MultiSelect modes -->
+            <Grid Grid.Row="1" Margin="16,8">
+
+                <!-- Standard mode: Add Goal -->
+                <Button
+                    Text="Add Goal"
+                    IsVisible="{Binding IsAddGoalVisible}"
+                    Command="{Binding AddGoalCommand}" />
+
+                <!-- MultiSelect mode: View Filtered Timeline + Cancel -->
+                <VerticalStackLayout
+                    IsVisible="{Binding IsMultiSelectMode}"
+                    Spacing="8">
+                    <Button
+                        Text="View Filtered Timeline"
+                        IsEnabled="{Binding IsViewFilteredTimelineVisible}"
+                        Command="{Binding ViewFilteredTimelineCommand}" />
+                    <Button
+                        Text="Cancel"
+                        Command="{Binding ExitMultiSelectCommand}" />
+                </VerticalStackLayout>
+
+            </Grid>
 
         </Grid>
 
