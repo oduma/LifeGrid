@@ -32,7 +32,7 @@ public partial class GoalsViewModel(IMediator mediator) : ObservableObject
     private async Task AddGoalAsync()
     {
         await mediator.Send(new StartNewGoalSessionCommand());
-        await Shell.Current.GoToAsync("setup");
+        await Shell.Current.GoToAsync("create-goal");
     }
 
     [RelayCommand]

@@ -18,13 +18,10 @@ public partial class TimelinePage : ContentPage
         base.OnAppearing();
         await _viewModel.LoadAsync();
 
-        if (_viewModel.ActiveWeekIndex >= 0)
+        if (_viewModel.CurrentWeekIndex >= 0)
             WeeksCollection.ScrollTo(
-                _viewModel.ActiveWeekIndex,
+                _viewModel.CurrentWeekIndex,
                 position: ScrollToPosition.Center,
                 animate: false);
     }
-
-    private void OnCollectionViewScrolled(object? sender, ItemsViewScrolledEventArgs e)
-        => _viewModel.SetActiveWeekByIndex(e.CenterItemIndex);
 }

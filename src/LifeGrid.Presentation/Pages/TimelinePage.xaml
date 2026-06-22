@@ -5,6 +5,7 @@
     xmlns:controls="clr-namespace:LifeGrid.Presentation.Controls"
     xmlns:converters="clr-namespace:LifeGrid.Presentation.Converters"
     x:Class="LifeGrid.Presentation.Pages.TimelinePage"
+    x:Name="PageRoot"
     Title="Timeline"
     BackgroundColor="{StaticResource Background}">
 
@@ -17,14 +18,11 @@
         <CollectionView
             x:Name="WeeksCollection"
             Grid.Row="0"
-            ItemsSource="{Binding Weeks}"
-            Scrolled="OnCollectionViewScrolled">
+            ItemsSource="{Binding Weeks}">
 
             <CollectionView.ItemsLayout>
                 <LinearItemsLayout
                     Orientation="Vertical"
-                    SnapPointsType="MandatorySingle"
-                    SnapPointsAlignment="Center"
                     ItemSpacing="8" />
             </CollectionView.ItemsLayout>
 
@@ -50,19 +48,23 @@
                         BackgroundColor="{StaticResource Surface}"
                         StrokeShape="RoundRectangle 2"
                         StrokeThickness="1"
-                        Stroke="{StaticResource SurfaceBrush}">
+                        Stroke="{StaticResource SurfaceBrush}"
+                        Opacity="{Binding CardOpacity}">
 
-                        <!-- Active state: Primary border, full opacity -->
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer
+                                Command="{Binding Source={x:Reference PageRoot}, Path=BindingContext.SelectWeekCommand}"
+                                CommandParameter="{Binding .}" />
+                        </Border.GestureRecognizers>
+
                         <Border.Triggers>
-                            <DataTrigger TargetType="Border" Binding="{Binding IsActive}" Value="True">
+                            <DataTrigger TargetType="Border" Binding="{Binding CardBorderState}" Value="Current">
+                                <Setter Property="Stroke" Value="{StaticResource Secondary}" />
+                                <Setter Property="StrokeThickness" Value="2" />
+                            </DataTrigger>
+                            <DataTrigger TargetType="Border" Binding="{Binding CardBorderState}" Value="Selected">
                                 <Setter Property="Stroke" Value="{StaticResource Primary}" />
                                 <Setter Property="StrokeThickness" Value="2" />
-                                <Setter Property="Opacity" Value="1.0" />
-                            </DataTrigger>
-                            <DataTrigger TargetType="Border" Binding="{Binding IsActive}" Value="False">
-                                <Setter Property="Stroke" Value="{StaticResource SurfaceBrush}" />
-                                <Setter Property="StrokeThickness" Value="1" />
-                                <Setter Property="Opacity" Value="0.55" />
                             </DataTrigger>
                         </Border.Triggers>
 
@@ -91,7 +93,7 @@
                                     VerticalOptions="Center"
                                     HorizontalTextAlignment="End">
                                     <Label.Triggers>
-                                        <DataTrigger TargetType="Label" Binding="{Binding IsActive}" Value="False">
+                                        <DataTrigger TargetType="Label" Binding="{Binding IsHighlighted}" Value="False">
                                             <Setter Property="TextColor" Value="{StaticResource OnSurface}" />
                                             <Setter Property="Opacity" Value="0.6" />
                                         </DataTrigger>

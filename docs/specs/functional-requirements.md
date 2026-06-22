@@ -140,7 +140,7 @@ Upon successful completion of the onboarding, context interrogation, and vice de
 This interface is the primary operational dashboard of the application. Upon completing the onboarding and setup phases, the user is deposited here. It serves as the central command center for habit execution, logging, and gamified feedback. 
 Main interaction screen wireframe:<file path=".\assets\wireframes\wf6.png">
 
-### 2.1 The Week-Centric Timeline
+### 2.1 The Week-Centric Timeline (Done)
 * **Weekly Paradigm:** The application actively suppresses the traditional "daily to-do list" anxiety by anchoring navigation to the **Week** (`Week Number` from the data schema). 
 * **Chronological Navigation:** The user navigates through a structured timeline focusing on "Current Week." 
 * **Temporal Visibility:** Users can scroll backward to review past performance or scroll forward to preview upcoming AI-scaled workloads.
