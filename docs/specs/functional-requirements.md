@@ -273,7 +273,8 @@ The user triggers an explicit "Overwhelmed" action for a specific goal.
 * **System Action:** The app bypasses the standard Interaction Hub and forces the user into the Overwhelmed resolution screen for the failing goal. They must choose Option A or Option B to continue using the app.
 
 #### 4.2.3 Goal Selection & Habit Filtering
-* Single-goal tap isolates habits; long-tapping allows multi-goal filtering.
+* Single-goal tap isolates automatically navigated to the Timeline view with filter on their week goal items only for the selected goal and at the bottom of the view an action See all Goals. If the user clicks on See all Goals. the filter is destroyed and all the weekgoal items are displayed;  
+* Long-tapping allows multi-goal selection (Goals selected should be marked with a square checked box icon). As soon as one goal is selected at the bottom of the goals list an action named "View Filtererd Timeline" should appear if the user clicks on it they navigated to the Timeline view with filter on their week goal items only for the selected goal(s) and at the bottom of the view an action See all Goals. If the user clicks on See all Goals. the filter is destroyed and all the weekgoal items are displayed 
 
 ### 4.3 Week Level Interactions
 

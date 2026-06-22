@@ -2,9 +2,9 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using LifeGrid.Application.Goal;
 using LifeGrid.Application.Onboarding.Commands;
+using LifeGrid.Application.Onboarding.Queries;
 using LifeGrid.Application.Week;
 using LifeGrid.Application.Week.Commands;
-using LifeGrid.Application.Onboarding.Queries;
 using LifeGrid.Domain.Onboarding;
 using MediatR;
 using System.Collections.ObjectModel;
@@ -45,11 +45,15 @@ public partial class CreateGoalViewModel(IMediator mediator, AppShellViewModel a
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsEntryFlowVisible))]
+    private bool _isGeneratingSchedule = false;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsEntryFlowVisible))]
     private string _infeasibilityReason = string.Empty;
 
     [ObservableProperty] private string _validatedGoalSummary = string.Empty;
 
-    public bool IsEntryFlowVisible => !IsGeneratingHabits && string.IsNullOrEmpty(InfeasibilityReason);
+    public bool IsEntryFlowVisible => !IsGeneratingHabits && !IsGeneratingSchedule && string.IsNullOrEmpty(InfeasibilityReason);
 
     public ObservableCollection<RefinementItem> RefinementItems { get; } = new();
 
@@ -185,37 +189,41 @@ public partial class CreateGoalViewModel(IMediator mediator, AppShellViewModel a
 
     private async Task AutoResumeHabitGenerationAsync()
     {
+        // Phase 1: Blueprint (cache hit returns immediately without an API call)
         IsGeneratingHabits = true;
-
-        var habitResult = await mediator.Send(new GenerateHabitsCommand());
-
+        var blueprintResult = await mediator.Send(new GenerateBlueprintCommand());
         IsGeneratingHabits = false;
 
-        if (!habitResult.IsSuccess)
+        if (!blueprintResult.IsSuccess)
         {
-            ValidationError = habitResult.Error ?? "Habit generation failed. Please try again.";
-            // Leave IsRefinementActive unchanged: if the user came from refinement they stay
-            // there and can tap "Confirm & Initialize" again to retry; if this is an auto-resume
-            // on page load the user will see the error in STATE A.
+            ValidationError = blueprintResult.Error ?? "Blueprint generation failed. Please try again.";
+            return;
+        }
+
+        if (blueprintResult.Value is HabitGenerationOutcome.Infeasible infeasible)
+        {
+            IsRefinementActive = false;
+            var hint = infeasible.SuggestedDeadline is not null
+                ? $"\n\nSuggested deadline: {infeasible.SuggestedDeadline}"
+                : string.Empty;
+            InfeasibilityReason = infeasible.RecalibrationReason + hint;
+            return;
+        }
+
+        // Phase 2: Schedule
+        IsGeneratingSchedule = true;
+        var scheduleResult = await mediator.Send(new GenerateScheduleCommand());
+        IsGeneratingSchedule = false;
+
+        if (!scheduleResult.IsSuccess)
+        {
+            ValidationError = scheduleResult.Error ?? "Schedule generation failed. Please try again.";
             return;
         }
 
         IsRefinementActive = false;
-
-        switch (habitResult.Value)
-        {
-            case HabitGenerationOutcome.Infeasible infeasible:
-                var hint = infeasible.SuggestedDeadline is not null
-                    ? $"\n\nSuggested deadline: {infeasible.SuggestedDeadline}"
-                    : string.Empty;
-                InfeasibilityReason = infeasible.RecalibrationReason + hint;
-                break;
-
-            case HabitGenerationOutcome.Complete:
-                appShellViewModel.SetOnboardingComplete();
-                await Shell.Current.GoToAsync("//goals");
-                break;
-        }
+        appShellViewModel.SetOnboardingComplete();
+        await Shell.Current.GoToAsync("//goals");
     }
 
     private void PopulateRefinementItems(IReadOnlyList<RefinementQuestionDto> questions)

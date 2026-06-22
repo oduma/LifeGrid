@@ -8,14 +8,12 @@ public sealed class OnboardingSession
     {
         SessionId           = Guid.NewGuid(),
         CurrentStep         = OnboardingStep.Unstarted,
-        IsComplete          = false,
         RawGoalDraft        = null,
         LastActiveTimestamp = DateTime.UtcNow
     };
 
     public Guid           SessionId           { get; private set; }
     public OnboardingStep CurrentStep         { get; private set; }
-    public bool           IsComplete          { get; private set; }
     public string?        RawGoalDraft        { get; private set; }
     public DateTime       LastActiveTimestamp { get; private set; }
 
@@ -36,6 +34,8 @@ public sealed class OnboardingSession
     public string?   RefinementQuestionsJson { get; private set; }
     public string?   RefinementAnswersJson   { get; private set; }
     public DateTime? ChosenStartDate         { get; private set; }
+    public string?   BlueprintJson           { get; private set; }
+    public Guid?     GoalId                  { get; private set; }
 
     public void LinkToUser(Guid userId) => UserId = userId;
 
@@ -61,6 +61,18 @@ public sealed class OnboardingSession
         LastActiveTimestamp   = DateTime.UtcNow;
     }
 
+    public void SetGoal(Guid goalId)
+    {
+        GoalId              = goalId;
+        LastActiveTimestamp = DateTime.UtcNow;
+    }
+
+    public void CacheBlueprint(string blueprintJson)
+    {
+        BlueprintJson       = blueprintJson;
+        LastActiveTimestamp = DateTime.UtcNow;
+    }
+
     public void AdvanceToExecutionVerified()
     {
         ValidatedGoalJson       = null;
@@ -74,25 +86,5 @@ public sealed class OnboardingSession
     {
         CurrentStep         = OnboardingStep.Step1_GoalDraftCaptured;
         LastActiveTimestamp = DateTime.UtcNow;
-    }
-
-    public void AdvanceToHabitsGenerated()
-    {
-        IsComplete          = true;
-        CurrentStep         = OnboardingStep.Step6_HabitsGenerated;
-        LastActiveTimestamp = DateTime.UtcNow;
-    }
-
-    public void Reset()
-    {
-        UserId                  = null;
-        CurrentStep             = OnboardingStep.Unstarted;
-        IsComplete              = false;
-        RawGoalDraft            = null;
-        ValidatedGoalJson       = null;
-        RefinementQuestionsJson = null;
-        RefinementAnswersJson   = null;
-        ChosenStartDate         = null;
-        LastActiveTimestamp     = DateTime.UtcNow;
     }
 }

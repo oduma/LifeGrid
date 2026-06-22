@@ -85,6 +85,7 @@ public sealed class FinalizeGoalCommandHandler(
 
         await goalRepository.AddAsync(goal, cancellationToken);
 
+        session.SetGoal(goal.GoalId);
         session.AdvanceToExecutionVerified();
         await onboardingRepository.UpsertAsync(session, cancellationToken);
 

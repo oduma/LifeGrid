@@ -67,7 +67,7 @@ public sealed class FactoryResetServiceTests : IDisposable
         _db.Habits.Add(habit);
         await _db.SaveChangesAsync();
 
-        // OnboardingSession (completed)
+        // OnboardingSession (in-progress)
         var session = OnboardingSession.Create();
         session.UpdateDraft("Run a marathon");
         session.AdvanceToStep1();
@@ -76,8 +76,6 @@ public sealed class FactoryResetServiceTests : IDisposable
         session.AdvanceToRefinementQuestionsActive(
             "{\"description\":\"Run\"}",
             "[{\"rankOrder\":1,\"question\":\"Baseline?\"}]");
-        session.AdvanceToExecutionVerified();
-        session.AdvanceToHabitsGenerated();
         _db.OnboardingSessions.Add(session);
         await _db.SaveChangesAsync();
 
@@ -102,7 +100,7 @@ public sealed class FactoryResetServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task ResetsOnboardingSessionToUnstarted()
+    public async Task DeletesOnboardingSessionOnReset()
     {
         await SeedAllTablesAsync();
         var service = new FactoryResetService(_db);
@@ -110,13 +108,6 @@ public sealed class FactoryResetServiceTests : IDisposable
         await service.ResetAsync();
         _db.ChangeTracker.Clear();
 
-        var session = await _db.OnboardingSessions.SingleAsync();
-        session.CurrentStep.Should().Be(OnboardingStep.Unstarted);
-        session.IsComplete.Should().BeFalse();
-        session.UserId.Should().BeNull();
-        session.RawGoalDraft.Should().BeNull();
-        session.ValidatedGoalJson.Should().BeNull();
-        session.RefinementQuestionsJson.Should().BeNull();
-        session.RefinementAnswersJson.Should().BeNull();
+        (await _db.OnboardingSessions.CountAsync()).Should().Be(0);
     }
 }

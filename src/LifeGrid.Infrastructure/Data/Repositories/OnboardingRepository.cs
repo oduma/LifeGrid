@@ -7,7 +7,7 @@ namespace LifeGrid.Infrastructure.Data.Repositories;
 public sealed class OnboardingRepository(LifeGridDbContext db) : IOnboardingRepository
 {
     public Task<OnboardingSession?> GetActiveSessionAsync(CancellationToken ct = default)
-        => db.OnboardingSessions.FirstOrDefaultAsync(s => !s.IsComplete, ct);
+        => db.OnboardingSessions.FirstOrDefaultAsync(ct);
 
     public async Task<OnboardingSession> UpsertAsync(OnboardingSession session, CancellationToken ct = default)
     {
@@ -21,5 +21,11 @@ public sealed class OnboardingRepository(LifeGridDbContext db) : IOnboardingRepo
 
         await db.SaveChangesAsync(ct);
         return session;
+    }
+
+    public async Task DeleteAsync(OnboardingSession session, CancellationToken ct = default)
+    {
+        db.OnboardingSessions.Remove(session);
+        await db.SaveChangesAsync(ct);
     }
 }

@@ -13,7 +13,7 @@
             <VerticalStackLayout Padding="16" Spacing="16" VerticalOptions="Center">
 
                 <!-- ════════════════════════════════════════════════════ -->
-                <!-- STATE E: Generating habits spinner                   -->
+                <!-- STATE E: Blueprint generation spinner (prompt 2.1)  -->
                 <!-- ════════════════════════════════════════════════════ -->
                 <VerticalStackLayout
                     IsVisible="{Binding IsGeneratingHabits}"
@@ -27,6 +27,26 @@
 
                     <Label
                         Text="Crafting your personalized plan..."
+                        HorizontalOptions="Center"
+                        HorizontalTextAlignment="Center" />
+
+                </VerticalStackLayout>
+
+                <!-- ════════════════════════════════════════════════════ -->
+                <!-- STATE E2: Schedule generation spinner (prompt 2.2)  -->
+                <!-- ════════════════════════════════════════════════════ -->
+                <VerticalStackLayout
+                    IsVisible="{Binding IsGeneratingSchedule}"
+                    Spacing="12"
+                    HorizontalOptions="Center">
+
+                    <ActivityIndicator
+                        IsRunning="{Binding IsGeneratingSchedule}"
+                        Color="{StaticResource Primary}"
+                        HorizontalOptions="Center" />
+
+                    <Label
+                        Text="Establishing the details of your schedule"
                         HorizontalOptions="Center"
                         HorizontalTextAlignment="Center" />
 

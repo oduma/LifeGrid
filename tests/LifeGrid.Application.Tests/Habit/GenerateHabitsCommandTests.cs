@@ -16,7 +16,7 @@ using WeekGoalEntity    = LifeGrid.Domain.WeekGoal.WeekGoal;
 
 namespace LifeGrid.Application.Tests.Habit;
 
-public sealed class GenerateHabitsCommandTests
+public sealed class GenerateScheduleCommandTests
 {
     private readonly IOnboardingRepository         _onboarding   = Substitute.For<IOnboardingRepository>();
     private readonly IUserProfileRepository        _userProfiles = Substitute.For<IUserProfileRepository>();
@@ -26,17 +26,20 @@ public sealed class GenerateHabitsCommandTests
     private readonly IHabitRepository              _habitRepo    = Substitute.For<IHabitRepository>();
     private readonly IUnitOfWork                   _uow          = Substitute.For<IUnitOfWork>();
 
-    private readonly GenerateHabitsCommandHandler _handler;
+    private readonly GenerateScheduleCommandHandler _handler;
 
-    public GenerateHabitsCommandTests()
-        => _handler = new GenerateHabitsCommandHandler(
+    public GenerateScheduleCommandTests()
+        => _handler = new GenerateScheduleCommandHandler(
             _onboarding, _userProfiles, _goals, _aiService, _weekRepo, _habitRepo, _uow);
 
     // ── helpers ──────────────────────────────────────────────────────────────
 
     private static readonly DateTime SampleChosenStartDate = new(2026, 6, 22);
 
-    private static OnboardingSession SessionAtExecutionVerified()
+    private const string SampleBlueprintJson =
+        """{"isFeasible":true,"coaching_strategy_summary":"Run 4x/week","schedule_parameters":{"measurement_unit":"km","starting_week_load":10,"peak_form_week_number":20,"peak_week_measurement_parameter":35,"peak_week_milestone_description":"Long run"}}""";
+
+    private static OnboardingSession SessionAtExecutionVerifiedWithBlueprint(Guid goalId)
     {
         var s = OnboardingSession.Create();
         s.UpdateDraft("Run a marathon in 6 months");
@@ -44,6 +47,8 @@ public sealed class GenerateHabitsCommandTests
         s.AdvanceToRefinementQuestionsActive("{}", "[]");
         s.AdvanceToExecutionVerified();
         s.SetChosenStartDate(SampleChosenStartDate);
+        s.SetGoal(goalId);
+        s.CacheBlueprint(SampleBlueprintJson);
         return s;
     }
 
@@ -52,8 +57,8 @@ public sealed class GenerateHabitsCommandTests
         var goal = GoalAggregate.Create(
             userId, "Run a marathon", "Physical", "6 months",
             new DateTime(2026, 12, 10, 0, 0, 0, DateTimeKind.Utc),
-            new DateTime(2026, 6, 22),  // Monday startDate (user-chosen)
-            new DateTime(2026, 6, 16)); // Tuesday creationDate
+            new DateTime(2026, 6, 22),
+            new DateTime(2026, 6, 16));
         goal.SetRefinementAnswers(new[] { (1, "What is your baseline?", (string?)"5k comfortable") });
         return goal;
     }
@@ -77,7 +82,7 @@ public sealed class GenerateHabitsCommandTests
     {
         _onboarding.GetActiveSessionAsync(Arg.Any<CancellationToken>()).Returns((OnboardingSession?)null);
 
-        var result = await _handler.Handle(new GenerateHabitsCommand(), default);
+        var result = await _handler.Handle(new GenerateScheduleCommand(), default);
 
         result.IsSuccess.Should().BeFalse();
         result.Error.Should().NotBeNullOrEmpty();
@@ -89,69 +94,84 @@ public sealed class GenerateHabitsCommandTests
         var session = OnboardingSession.Create(); // Unstarted
         _onboarding.GetActiveSessionAsync(Arg.Any<CancellationToken>()).Returns(session);
 
-        var result = await _handler.Handle(new GenerateHabitsCommand(), default);
+        var result = await _handler.Handle(new GenerateScheduleCommand(), default);
 
         result.IsSuccess.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task NoGoalId_ReturnsFailure()
+    {
+        var session = OnboardingSession.Create();
+        session.UpdateDraft("Run a marathon in 6 months");
+        session.AdvanceToStep1();
+        session.AdvanceToRefinementQuestionsActive("{}", "[]");
+        session.AdvanceToExecutionVerified();
+        session.SetChosenStartDate(SampleChosenStartDate);
+        // no SetGoal call
+
+        _onboarding.GetActiveSessionAsync(Arg.Any<CancellationToken>()).Returns(session);
+
+        var result = await _handler.Handle(new GenerateScheduleCommand(), default);
+
+        result.IsSuccess.Should().BeFalse();
+        await _goals.DidNotReceive().GetByIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
     public async Task NoUserProfile_ReturnsFailure()
     {
         _onboarding.GetActiveSessionAsync(Arg.Any<CancellationToken>())
-                   .Returns(SessionAtExecutionVerified());
+                   .Returns(SessionAtExecutionVerifiedWithBlueprint(Guid.NewGuid()));
         _userProfiles.GetSingleAsync(Arg.Any<CancellationToken>()).Returns((UserProfileEntity?)null);
 
-        var result = await _handler.Handle(new GenerateHabitsCommand(), default);
+        var result = await _handler.Handle(new GenerateScheduleCommand(), default);
 
         result.IsSuccess.Should().BeFalse();
-        await _goals.DidNotReceive().GetByUserIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+        await _goals.DidNotReceive().GetByIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
     public async Task GoalNotFound_ReturnsFailure()
     {
+        var goalId  = Guid.NewGuid();
         var profile = UserProfileEntity.Create();
         _onboarding.GetActiveSessionAsync(Arg.Any<CancellationToken>())
-                   .Returns(SessionAtExecutionVerified());
+                   .Returns(SessionAtExecutionVerifiedWithBlueprint(goalId));
         _userProfiles.GetSingleAsync(Arg.Any<CancellationToken>()).Returns(profile);
-        _goals.GetByUserIdAsync(profile.UserId, Arg.Any<CancellationToken>())
+        _goals.GetByIdAsync(goalId, Arg.Any<CancellationToken>())
               .Returns((GoalAggregate?)null);
 
-        var result = await _handler.Handle(new GenerateHabitsCommand(), default);
+        var result = await _handler.Handle(new GenerateScheduleCommand(), default);
 
         result.IsSuccess.Should().BeFalse();
-        await _aiService.DidNotReceive().GenerateScheduleAsync(
-            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>());
+        await _aiService.DidNotReceive().GenerateScheduleFromBlueprintAsync(
+            Arg.Any<string>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>());
     }
 
-    // ── infeasibility path ────────────────────────────────────────────────────
-
     [Fact]
-    public async Task AiReturnsInfeasible_ReturnsInfeasibleOutcome_AndNothingPersisted()
+    public async Task NoBlueprintCached_ReturnsFailure()
     {
         var profile = UserProfileEntity.Create();
         var goal    = SampleGoal(profile.UserId);
 
-        _onboarding.GetActiveSessionAsync(Arg.Any<CancellationToken>())
-                   .Returns(SessionAtExecutionVerified());
+        var session = OnboardingSession.Create();
+        session.UpdateDraft("Run a marathon in 6 months");
+        session.AdvanceToStep1();
+        session.AdvanceToRefinementQuestionsActive("{}", "[]");
+        session.AdvanceToExecutionVerified();
+        session.SetChosenStartDate(SampleChosenStartDate);
+        session.SetGoal(goal.GoalId);
+        // no CacheBlueprint call
+
+        _onboarding.GetActiveSessionAsync(Arg.Any<CancellationToken>()).Returns(session);
         _userProfiles.GetSingleAsync(Arg.Any<CancellationToken>()).Returns(profile);
-        _goals.GetByUserIdAsync(profile.UserId, Arg.Any<CancellationToken>()).Returns(goal);
-        _aiService.GenerateScheduleAsync(
-                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
-            .Returns(Result<HabitSchedulingResult>.Success(
-                new HabitSchedulingResult.Infeasible("Too aggressive", "2027-06-01", null)));
+        _goals.GetByIdAsync(goal.GoalId, Arg.Any<CancellationToken>()).Returns(goal);
 
-        var result = await _handler.Handle(new GenerateHabitsCommand(), default);
+        var result = await _handler.Handle(new GenerateScheduleCommand(), default);
 
-        result.IsSuccess.Should().BeTrue();
-        result.Value.Should().BeOfType<HabitGenerationOutcome.Infeasible>();
-        ((HabitGenerationOutcome.Infeasible)result.Value!).RecalibrationReason.Should().Be("Too aggressive");
-
-        await _weekRepo.DidNotReceive().AddAsync(
-            Arg.Any<WeekEntity>(), Arg.Any<WeekGoalEntity>(), Arg.Any<CancellationToken>());
-        await _habitRepo.DidNotReceive().AddRangeAsync(
-            Arg.Any<IReadOnlyList<LifeGrid.Domain.Habit.Habit>>(), Arg.Any<CancellationToken>());
-        await _uow.DidNotReceive().CommitAsync(Arg.Any<CancellationToken>());
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Should().Contain("blueprint");
     }
 
     // ── technical failure path ────────────────────────────────────────────────
@@ -163,14 +183,14 @@ public sealed class GenerateHabitsCommandTests
         var goal    = SampleGoal(profile.UserId);
 
         _onboarding.GetActiveSessionAsync(Arg.Any<CancellationToken>())
-                   .Returns(SessionAtExecutionVerified());
+                   .Returns(SessionAtExecutionVerifiedWithBlueprint(goal.GoalId));
         _userProfiles.GetSingleAsync(Arg.Any<CancellationToken>()).Returns(profile);
-        _goals.GetByUserIdAsync(profile.UserId, Arg.Any<CancellationToken>()).Returns(goal);
-        _aiService.GenerateScheduleAsync(
-                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+        _goals.GetByIdAsync(goal.GoalId, Arg.Any<CancellationToken>()).Returns(goal);
+        _aiService.GenerateScheduleFromBlueprintAsync(
+                Arg.Any<string>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
             .Returns(Result<HabitSchedulingResult>.Failure("Gemini rate limit reached."));
 
-        var result = await _handler.Handle(new GenerateHabitsCommand(), default);
+        var result = await _handler.Handle(new GenerateScheduleCommand(), default);
 
         result.IsSuccess.Should().BeFalse();
         result.Error.Should().Contain("rate limit");
@@ -181,9 +201,11 @@ public sealed class GenerateHabitsCommandTests
     [Fact]
     public async Task HappyPath_ReturnsComplete()
     {
-        ArrangeHappyPath(SessionAtExecutionVerified(), SampleGoal(UserProfileEntity.Create().UserId), out _, out _);
+        var profile = UserProfileEntity.Create();
+        var goal    = SampleGoal(profile.UserId);
+        ArrangeHappyPath(SessionAtExecutionVerifiedWithBlueprint(goal.GoalId), goal, profile);
 
-        var result = await _handler.Handle(new GenerateHabitsCommand(), default);
+        var result = await _handler.Handle(new GenerateScheduleCommand(), default);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.Should().BeOfType<HabitGenerationOutcome.Complete>();
@@ -194,9 +216,9 @@ public sealed class GenerateHabitsCommandTests
     {
         var profile = UserProfileEntity.Create();
         var goal    = SampleGoal(profile.UserId);
-        ArrangeHappyPath(SessionAtExecutionVerified(), goal, out _, out _);
+        ArrangeHappyPath(SessionAtExecutionVerifiedWithBlueprint(goal.GoalId), goal, profile);
 
-        await _handler.Handle(new GenerateHabitsCommand(), default);
+        await _handler.Handle(new GenerateScheduleCommand(), default);
 
         await _weekRepo.Received(1).AddAsync(
             Arg.Any<WeekEntity>(), Arg.Any<WeekGoalEntity>(), Arg.Any<CancellationToken>());
@@ -207,9 +229,9 @@ public sealed class GenerateHabitsCommandTests
     {
         var profile = UserProfileEntity.Create();
         var goal    = SampleGoal(profile.UserId);
-        ArrangeHappyPath(SessionAtExecutionVerified(), goal, out _, out _);
+        ArrangeHappyPath(SessionAtExecutionVerifiedWithBlueprint(goal.GoalId), goal, profile);
 
-        await _handler.Handle(new GenerateHabitsCommand(), default);
+        await _handler.Handle(new GenerateScheduleCommand(), default);
 
         await _habitRepo.Received(1).AddRangeAsync(
             Arg.Any<IReadOnlyList<LifeGrid.Domain.Habit.Habit>>(), Arg.Any<CancellationToken>());
@@ -218,23 +240,26 @@ public sealed class GenerateHabitsCommandTests
     [Fact]
     public async Task HappyPath_UnitOfWorkCommittedOnce()
     {
-        ArrangeHappyPath(SessionAtExecutionVerified(), SampleGoal(UserProfileEntity.Create().UserId), out _, out _);
+        var profile = UserProfileEntity.Create();
+        var goal    = SampleGoal(profile.UserId);
+        ArrangeHappyPath(SessionAtExecutionVerifiedWithBlueprint(goal.GoalId), goal, profile);
 
-        await _handler.Handle(new GenerateHabitsCommand(), default);
+        await _handler.Handle(new GenerateScheduleCommand(), default);
 
         await _uow.Received(1).CommitAsync(Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public async Task HappyPath_AdvancesSessionToHabitsGenerated()
+    public async Task HappyPath_DeletesSessionAfterCompletion()
     {
-        var session = SessionAtExecutionVerified();
-        ArrangeHappyPath(session, SampleGoal(UserProfileEntity.Create().UserId), out _, out _);
+        var profile = UserProfileEntity.Create();
+        var goal    = SampleGoal(profile.UserId);
+        ArrangeHappyPath(SessionAtExecutionVerifiedWithBlueprint(goal.GoalId), goal, profile);
 
-        await _handler.Handle(new GenerateHabitsCommand(), default);
+        await _handler.Handle(new GenerateScheduleCommand(), default);
 
-        session.IsComplete.Should().BeTrue();
-        session.CurrentStep.Should().Be(OnboardingStep.Step6_HabitsGenerated);
+        await _onboarding.Received(1).DeleteAsync(Arg.Any<OnboardingSession>(), Arg.Any<CancellationToken>());
+        await _onboarding.DidNotReceive().UpsertAsync(Arg.Any<OnboardingSession>(), Arg.Any<CancellationToken>());
     }
 
     // ── shield bonus ─────────────────────────────────────────────────────────
@@ -244,19 +269,17 @@ public sealed class GenerateHabitsCommandTests
     {
         var profile = UserProfileEntity.Create();
         var goal    = SampleGoal(profile.UserId);
-        var session = SessionAtExecutionVerified();
+        var session = SessionAtExecutionVerifiedWithBlueprint(goal.GoalId);
 
         _onboarding.GetActiveSessionAsync(Arg.Any<CancellationToken>()).Returns(session);
-        _onboarding.UpsertAsync(Arg.Any<OnboardingSession>(), Arg.Any<CancellationToken>())
-                   .Returns(x => x.Arg<OnboardingSession>());
         _userProfiles.GetSingleAsync(Arg.Any<CancellationToken>()).Returns(profile);
-        _goals.GetByUserIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(goal);
+        _goals.GetByIdAsync(goal.GoalId, Arg.Any<CancellationToken>()).Returns(goal);
         _goals.GetActiveCountAsync(profile.UserId, Arg.Any<CancellationToken>()).Returns(1);
-        _aiService.GenerateScheduleAsync(
-                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+        _aiService.GenerateScheduleFromBlueprintAsync(
+                Arg.Any<string>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
             .Returns(Result<HabitSchedulingResult>.Success(FeasibleResult));
 
-        await _handler.Handle(new GenerateHabitsCommand(), default);
+        await _handler.Handle(new GenerateScheduleCommand(), default);
 
         profile.Economy.ShieldsAvailable.Should().Be(1);
     }
@@ -266,19 +289,17 @@ public sealed class GenerateHabitsCommandTests
     {
         var profile = UserProfileEntity.Create();
         var goal    = SampleGoal(profile.UserId);
-        var session = SessionAtExecutionVerified();
+        var session = SessionAtExecutionVerifiedWithBlueprint(goal.GoalId);
 
         _onboarding.GetActiveSessionAsync(Arg.Any<CancellationToken>()).Returns(session);
-        _onboarding.UpsertAsync(Arg.Any<OnboardingSession>(), Arg.Any<CancellationToken>())
-                   .Returns(x => x.Arg<OnboardingSession>());
         _userProfiles.GetSingleAsync(Arg.Any<CancellationToken>()).Returns(profile);
-        _goals.GetByUserIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(goal);
+        _goals.GetByIdAsync(goal.GoalId, Arg.Any<CancellationToken>()).Returns(goal);
         _goals.GetActiveCountAsync(profile.UserId, Arg.Any<CancellationToken>()).Returns(2);
-        _aiService.GenerateScheduleAsync(
-                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+        _aiService.GenerateScheduleFromBlueprintAsync(
+                Arg.Any<string>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
             .Returns(Result<HabitSchedulingResult>.Success(FeasibleResult));
 
-        await _handler.Handle(new GenerateHabitsCommand(), default);
+        await _handler.Handle(new GenerateScheduleCommand(), default);
 
         profile.Economy.ShieldsAvailable.Should().Be(0);
     }
@@ -290,22 +311,20 @@ public sealed class GenerateHabitsCommandTests
     {
         var profile = UserProfileEntity.Create();
         var goal    = SampleGoal(profile.UserId);
-        var session = SessionAtExecutionVerified();
+        var session = SessionAtExecutionVerifiedWithBlueprint(goal.GoalId);
 
         var existingWeek = WeekEntity.Create(1, SampleSchedule[0].StartDate);
         _weekRepo.GetByStartDateAsync(Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
                  .Returns(existingWeek);
 
         _onboarding.GetActiveSessionAsync(Arg.Any<CancellationToken>()).Returns(session);
-        _onboarding.UpsertAsync(Arg.Any<OnboardingSession>(), Arg.Any<CancellationToken>())
-                   .Returns(x => x.Arg<OnboardingSession>());
         _userProfiles.GetSingleAsync(Arg.Any<CancellationToken>()).Returns(profile);
-        _goals.GetByUserIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(goal);
-        _aiService.GenerateScheduleAsync(
-                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+        _goals.GetByIdAsync(goal.GoalId, Arg.Any<CancellationToken>()).Returns(goal);
+        _aiService.GenerateScheduleFromBlueprintAsync(
+                Arg.Any<string>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
             .Returns(Result<HabitSchedulingResult>.Success(FeasibleResult));
 
-        await _handler.Handle(new GenerateHabitsCommand(), default);
+        await _handler.Handle(new GenerateScheduleCommand(), default);
 
         await _weekRepo.DidNotReceive().AddAsync(
             Arg.Any<WeekEntity>(), Arg.Any<WeekGoalEntity>(), Arg.Any<CancellationToken>());
@@ -318,24 +337,22 @@ public sealed class GenerateHabitsCommandTests
     {
         var profile = UserProfileEntity.Create();
         var goal    = SampleGoal(profile.UserId);
-        var session = SessionAtExecutionVerified();
+        var session = SessionAtExecutionVerifiedWithBlueprint(goal.GoalId);
 
         WeekGoalEntity? capturedWeekGoal = null;
 
         _onboarding.GetActiveSessionAsync(Arg.Any<CancellationToken>()).Returns(session);
-        _onboarding.UpsertAsync(Arg.Any<OnboardingSession>(), Arg.Any<CancellationToken>())
-                   .Returns(x => x.Arg<OnboardingSession>());
         _userProfiles.GetSingleAsync(Arg.Any<CancellationToken>()).Returns(profile);
-        _goals.GetByUserIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(goal);
-        _aiService.GenerateScheduleAsync(
-                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+        _goals.GetByIdAsync(goal.GoalId, Arg.Any<CancellationToken>()).Returns(goal);
+        _aiService.GenerateScheduleFromBlueprintAsync(
+                Arg.Any<string>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
             .Returns(Result<HabitSchedulingResult>.Success(FeasibleResult));
         await _weekRepo.AddAsync(
             Arg.Any<WeekEntity>(),
             Arg.Do<WeekGoalEntity>(wg => capturedWeekGoal = wg),
             Arg.Any<CancellationToken>());
 
-        await _handler.Handle(new GenerateHabitsCommand(), default);
+        await _handler.Handle(new GenerateScheduleCommand(), default);
 
         capturedWeekGoal.Should().NotBeNull();
         capturedWeekGoal!.WeekGoalNumber.Should().Be(1);
@@ -347,49 +364,40 @@ public sealed class GenerateHabitsCommandTests
     public async Task GenerateSchedule_PassesChosenStartDateFromSession()
     {
         var chosenStart = new DateTime(2026, 7, 6); // Monday
-        var session     = OnboardingSession.Create();
+        var profile     = UserProfileEntity.Create();
+        var goal        = SampleGoal(profile.UserId);
+
+        var session = OnboardingSession.Create();
         session.UpdateDraft("Run a marathon in 6 months");
         session.AdvanceToStep1();
         session.AdvanceToRefinementQuestionsActive("{}", "[]");
         session.AdvanceToExecutionVerified();
         session.SetChosenStartDate(chosenStart);
-
-        var profile = UserProfileEntity.Create();
-        var goal    = SampleGoal(profile.UserId);
+        session.SetGoal(goal.GoalId);
+        session.CacheBlueprint(SampleBlueprintJson);
 
         _onboarding.GetActiveSessionAsync(Arg.Any<CancellationToken>()).Returns(session);
-        _onboarding.UpsertAsync(Arg.Any<OnboardingSession>(), Arg.Any<CancellationToken>())
-                   .Returns(x => x.Arg<OnboardingSession>());
         _userProfiles.GetSingleAsync(Arg.Any<CancellationToken>()).Returns(profile);
-        _goals.GetByUserIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(goal);
-        _aiService.GenerateScheduleAsync(
-                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+        _goals.GetByIdAsync(goal.GoalId, Arg.Any<CancellationToken>()).Returns(goal);
+        _aiService.GenerateScheduleFromBlueprintAsync(
+                Arg.Any<string>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
             .Returns(Result<HabitSchedulingResult>.Success(FeasibleResult));
 
-        await _handler.Handle(new GenerateHabitsCommand(), default);
+        await _handler.Handle(new GenerateScheduleCommand(), default);
 
-        await _aiService.Received(1).GenerateScheduleAsync(
-            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), chosenStart, Arg.Any<CancellationToken>());
+        await _aiService.Received(1).GenerateScheduleFromBlueprintAsync(
+            Arg.Any<string>(), chosenStart, Arg.Any<CancellationToken>());
     }
 
     // ── wiring helper ─────────────────────────────────────────────────────────
 
-    private void ArrangeHappyPath(
-        OnboardingSession session,
-        GoalAggregate     goal,
-        out UserProfileEntity profile,
-        out GoalAggregate     outGoal)
+    private void ArrangeHappyPath(OnboardingSession session, GoalAggregate goal, UserProfileEntity profile)
     {
-        profile = UserProfileEntity.Create();
-        outGoal = goal;
-
         _onboarding.GetActiveSessionAsync(Arg.Any<CancellationToken>()).Returns(session);
-        _onboarding.UpsertAsync(Arg.Any<OnboardingSession>(), Arg.Any<CancellationToken>())
-                   .Returns(x => x.Arg<OnboardingSession>());
         _userProfiles.GetSingleAsync(Arg.Any<CancellationToken>()).Returns(profile);
-        _goals.GetByUserIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(goal);
-        _aiService.GenerateScheduleAsync(
-                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+        _goals.GetByIdAsync(goal.GoalId, Arg.Any<CancellationToken>()).Returns(goal);
+        _aiService.GenerateScheduleFromBlueprintAsync(
+                Arg.Any<string>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
             .Returns(Result<HabitSchedulingResult>.Success(FeasibleResult));
     }
 }

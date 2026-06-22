@@ -13,13 +13,6 @@ public sealed class OnboardingSessionTests
     }
 
     [Fact]
-    public void Create_SetsIsCompleteFalse()
-    {
-        var session = OnboardingSession.Create();
-        session.IsComplete.Should().BeFalse();
-    }
-
-    [Fact]
     public void Create_SetsNullDraft()
     {
         var session = OnboardingSession.Create();
@@ -72,14 +65,6 @@ public sealed class OnboardingSessionTests
         var session = OnboardingSession.Create();
         session.AdvanceToStep1();
         session.CurrentStep.Should().Be(OnboardingStep.Step1_GoalDraftCaptured);
-    }
-
-    [Fact]
-    public void AdvanceToStep1_DoesNotSetIsComplete()
-    {
-        var session = OnboardingSession.Create();
-        session.AdvanceToStep1();
-        session.IsComplete.Should().BeFalse();
     }
 
     [Fact]

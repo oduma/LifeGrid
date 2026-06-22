@@ -40,7 +40,6 @@ public sealed class CompleteStep1CommandHandlerTests
 
         result.IsSuccess.Should().BeTrue();
         result.Value!.CurrentStep.Should().Be(OnboardingStep.Step1_GoalDraftCaptured);
-        result.Value.IsComplete.Should().BeFalse();
         await _repository.Received(1).UpsertAsync(session, Arg.Any<CancellationToken>());
     }
 }

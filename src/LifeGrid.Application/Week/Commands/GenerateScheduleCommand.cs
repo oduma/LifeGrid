@@ -6,16 +6,15 @@ using LifeGrid.Application.UserProfile;
 using LifeGrid.Domain.Common;
 using LifeGrid.Domain.Onboarding;
 using MediatR;
-using System.Text.Json;
 using HabitEntity    = LifeGrid.Domain.Habit.Habit;
 using WeekEntity     = LifeGrid.Domain.Week.Week;
 using WeekGoalEntity = LifeGrid.Domain.WeekGoal.WeekGoal;
 
 namespace LifeGrid.Application.Week.Commands;
 
-public record GenerateHabitsCommand : IRequest<Result<HabitGenerationOutcome>>;
+public record GenerateScheduleCommand : IRequest<Result<HabitGenerationOutcome>>;
 
-public sealed class GenerateHabitsCommandHandler(
+public sealed class GenerateScheduleCommandHandler(
     IOnboardingRepository         onboardingRepository,
     IUserProfileRepository        userProfileRepository,
     IGoalRepository               goalRepository,
@@ -23,11 +22,11 @@ public sealed class GenerateHabitsCommandHandler(
     IWeekRepository               weekRepository,
     IHabitRepository              habitRepository,
     IUnitOfWork                   unitOfWork)
-    : IRequestHandler<GenerateHabitsCommand, Result<HabitGenerationOutcome>>
+    : IRequestHandler<GenerateScheduleCommand, Result<HabitGenerationOutcome>>
 {
     public async Task<Result<HabitGenerationOutcome>> Handle(
-        GenerateHabitsCommand request,
-        CancellationToken     cancellationToken)
+        GenerateScheduleCommand request,
+        CancellationToken       cancellationToken)
     {
         var session = await onboardingRepository.GetActiveSessionAsync(cancellationToken);
         if (session is null)
@@ -37,24 +36,30 @@ public sealed class GenerateHabitsCommandHandler(
             return Result<HabitGenerationOutcome>.Failure(
                 $"Session is not in the expected state. Current step: {session.CurrentStep}");
 
+        if (session.GoalId is null)
+            return Result<HabitGenerationOutcome>.Failure(
+                "No goal linked to the current session. Please finalize the goal first.");
+
         var userProfile = await userProfileRepository.GetSingleAsync(cancellationToken);
         if (userProfile is null)
             return Result<HabitGenerationOutcome>.Failure("User profile not found.");
 
-        var goal = await goalRepository.GetByUserIdAsync(userProfile.UserId, cancellationToken);
+        var goal = await goalRepository.GetByIdAsync(session.GoalId.Value, cancellationToken);
         if (goal is null)
-            return Result<HabitGenerationOutcome>.Failure("No goal found for the current user.");
+            return Result<HabitGenerationOutcome>.Failure("No goal found for the current session.");
 
         if (session.ChosenStartDate is null)
             return Result<HabitGenerationOutcome>.Failure("No chosen start date found in session.");
 
+        if (session.BlueprintJson is null)
+            return Result<HabitGenerationOutcome>.Failure(
+                "No blueprint cached for this goal. Run GenerateBlueprintCommand first.");
+
         var activeGoalCount = await goalRepository.GetActiveCountAsync(userProfile.UserId, cancellationToken);
         var isFirstGoal     = activeGoalCount == 1;
 
-        var serviceResult = await habitGenerationService.GenerateScheduleAsync(
-            goal.Description,
-            goal.DeadlineDate.ToString("yyyy-MM-dd"),
-            BuildBaselineAnswersJson(goal),
+        var serviceResult = await habitGenerationService.GenerateScheduleFromBlueprintAsync(
+            session.BlueprintJson,
             session.ChosenStartDate.Value,
             cancellationToken);
 
@@ -62,13 +67,11 @@ public sealed class GenerateHabitsCommandHandler(
             return Result<HabitGenerationOutcome>.Failure(serviceResult.Error!);
 
         if (serviceResult.Value is HabitSchedulingResult.Infeasible infeasible)
-        {
             return Result<HabitGenerationOutcome>.Success(
                 new HabitGenerationOutcome.Infeasible(
                     infeasible.RecalibrationReason,
                     infeasible.SuggestedDeadline,
                     infeasible.SuggestedAlternativeScope));
-        }
 
         var feasible = (HabitSchedulingResult.Feasible)serviceResult.Value!;
 
@@ -107,19 +110,8 @@ public sealed class GenerateHabitsCommandHandler(
 
         await unitOfWork.CommitAsync(cancellationToken);
 
-        session.AdvanceToHabitsGenerated();
-        await onboardingRepository.UpsertAsync(session, cancellationToken);
+        await onboardingRepository.DeleteAsync(session, cancellationToken);
 
         return Result<HabitGenerationOutcome>.Success(new HabitGenerationOutcome.Complete());
-    }
-
-    private static string BuildBaselineAnswersJson(Domain.Goal.Goal goal)
-    {
-        var answers = goal.RefinementAnswers
-            .OrderBy(a => a.RankOrder)
-            .Select(a => new { question = a.Question, answer = a.Answer ?? string.Empty })
-            .ToList();
-
-        return JsonSerializer.Serialize(answers);
     }
 }

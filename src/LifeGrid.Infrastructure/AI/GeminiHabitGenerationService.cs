@@ -25,7 +25,31 @@ internal sealed class GeminiHabitGenerationService(IChatClient chatClient)
         DateTime          startDate,
         CancellationToken ct = default)
     {
-        // ── Call 1: Blueprint (prompt2.1) ─────────────────────────────────
+        // Combined path used by RecalculateGoalScheduleCommand (prompt 2.1 + 2.2 in one go)
+        var blueprintResult = await GenerateBlueprintAsync(
+            goalAsStated, deadlineAsStated, baselineAnswersJson, startDate, ct);
+
+        if (!blueprintResult.IsSuccess)
+            return Result<HabitSchedulingResult>.Failure(blueprintResult.Error!);
+
+        if (blueprintResult.Value is BlueprintResult.Infeasible infeasible)
+            return Result<HabitSchedulingResult>.Success(
+                new HabitSchedulingResult.Infeasible(
+                    infeasible.Reason,
+                    infeasible.SuggestedDeadline,
+                    infeasible.SuggestedScope));
+
+        var feasible = (BlueprintResult.Feasible)blueprintResult.Value!;
+        return await GenerateScheduleFromBlueprintAsync(feasible.BlueprintJson, startDate, ct);
+    }
+
+    public async Task<Result<BlueprintResult>> GenerateBlueprintAsync(
+        string            goalAsStated,
+        string            deadlineAsStated,
+        string            baselineAnswersJson,
+        DateTime          startDate,
+        CancellationToken ct = default)
+    {
         var startDateStr = startDate.ToString("MMMM d, yyyy");
         var prompt1 = Prompt21Template
                           .Replace("${USER_GOAL}",                  goalAsStated)
@@ -43,25 +67,61 @@ internal sealed class GeminiHabitGenerationService(IChatClient chatClient)
         }
         catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
         {
-            return Result<HabitSchedulingResult>.Failure(ex.Message);
+            return Result<BlueprintResult>.Failure(ex.Message);
         }
         catch (Exception ex)
         {
-            return Result<HabitSchedulingResult>.Failure($"Gemini request failed (blueprint call): {ex.Message}");
+            return Result<BlueprintResult>.Failure($"Gemini request failed (blueprint call): {ex.Message}");
         }
 
-        // Parse Call 1 to check feasibility
-        var feasibilityResult = ParseFeasibility(StripCodeFences(call1Raw));
-        if (!feasibilityResult.IsSuccess)
-            return Result<HabitSchedulingResult>.Failure(feasibilityResult.Error!);
+        var stripped = StripCodeFences(call1Raw);
+        try
+        {
+            using var doc  = JsonDocument.Parse(stripped);
+            var       root = doc.RootElement;
 
-        if (feasibilityResult.Value is HabitSchedulingResult.Infeasible)
-            return Result<HabitSchedulingResult>.Success(feasibilityResult.Value);
+            if (!root.TryGetProperty("isFeasible", out var feasibleProp))
+                return Result<BlueprintResult>.Failure(
+                    "Gemini blueprint response missing 'isFeasible' field.");
 
-        // ── Call 2: Schedule (prompt2.2) ──────────────────────────────────
-        // Pass the raw Call 1 JSON directly — no re-serialization
+            if (!feasibleProp.GetBoolean())
+            {
+                var reason = root.TryGetProperty("recalibration_reason", out var rp)
+                    ? rp.GetString() ?? "Goal flagged as unsafe by the AI."
+                    : "Goal flagged as unsafe by the AI.";
+
+                string? suggestedDeadline = null;
+                string? suggestedScope    = null;
+
+                if (root.TryGetProperty("recommended_recalibration", out var rec))
+                {
+                    if (rec.TryGetProperty("suggested_deadline", out var sd))
+                        suggestedDeadline = sd.GetString();
+                    if (rec.TryGetProperty("suggested_alternative_scope", out var ss))
+                        suggestedScope = ss.GetString();
+                }
+
+                return Result<BlueprintResult>.Success(
+                    new BlueprintResult.Infeasible(reason, suggestedDeadline, suggestedScope));
+            }
+
+            return Result<BlueprintResult>.Success(new BlueprintResult.Feasible(stripped));
+        }
+        catch (JsonException)
+        {
+            return Result<BlueprintResult>.Failure(
+                "Gemini returned malformed JSON for the blueprint call.");
+        }
+    }
+
+    public async Task<Result<HabitSchedulingResult>> GenerateScheduleFromBlueprintAsync(
+        string            blueprintJson,
+        DateTime          startDate,
+        CancellationToken ct = default)
+    {
+        var startDateStr = startDate.ToString("MMMM d, yyyy");
         var prompt2 = Prompt22Template
-            .Replace("${COACH_SPECIALIST_PARAMETERS_JSON}", call1Raw)
+            .Replace("${COACH_SPECIALIST_PARAMETERS_JSON}", blueprintJson)
             .Replace("${START_DATE}", startDateStr);
 
         string call2Raw;
@@ -85,49 +145,6 @@ internal sealed class GeminiHabitGenerationService(IChatClient chatClient)
     }
 
     // ── Parsing ────────────────────────────────────────────────────────────
-
-    private static Result<HabitSchedulingResult> ParseFeasibility(string json)
-    {
-        try
-        {
-            using var doc  = JsonDocument.Parse(json);
-            var       root = doc.RootElement;
-
-            if (!root.TryGetProperty("isFeasible", out var feasibleProp))
-                return Result<HabitSchedulingResult>.Failure(
-                    "Gemini blueprint response missing 'isFeasible' field.");
-
-            if (!feasibleProp.GetBoolean())
-            {
-                var reason    = root.TryGetProperty("recalibration_reason", out var rp)
-                    ? rp.GetString() ?? "Goal flagged as unsafe by the AI."
-                    : "Goal flagged as unsafe by the AI.";
-
-                string? suggestedDeadline     = null;
-                string? suggestedScope        = null;
-
-                if (root.TryGetProperty("recommended_recalibration", out var rec))
-                {
-                    if (rec.TryGetProperty("suggested_deadline", out var sd))
-                        suggestedDeadline = sd.GetString();
-                    if (rec.TryGetProperty("suggested_alternative_scope", out var ss))
-                        suggestedScope = ss.GetString();
-                }
-
-                return Result<HabitSchedulingResult>.Success(
-                    new HabitSchedulingResult.Infeasible(reason, suggestedDeadline, suggestedScope));
-            }
-
-            // Feasible — return a sentinel; the raw JSON travels on to Call 2
-            return Result<HabitSchedulingResult>.Success(
-                new HabitSchedulingResult.Feasible(Array.Empty<WeekScheduleDto>()));
-        }
-        catch (JsonException)
-        {
-            return Result<HabitSchedulingResult>.Failure(
-                "Gemini returned malformed JSON for the blueprint call.");
-        }
-    }
 
     private static Result<HabitSchedulingResult> ParseSchedule(string json)
     {

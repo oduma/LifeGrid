@@ -54,14 +54,15 @@
   "OnboardingProgressCache": {
     "SessionID": "Guid",
     "UserID": "Guid? // Nullable FK to User_Profile; NULL until UserProfile is created",
-    "Current_Step": "String (Unstarted, Step1_GoalDraftCaptured, Step1_AwaitingValidation, Step1_RefinementQuestionsActive, Step1_ExecutionVerified, Step6_HabitsGenerated)",
-    "Is_Complete": "Boolean",
+    "Current_Step": "String (Unstarted, Step1_GoalDraftCaptured, Step1_AwaitingValidation, Step1_RefinementQuestionsActive, Step1_ExecutionVerified)",
     "Raw_Goal_Draft": "String (Nullable)",
     "Last_Active_Timestamp": "DateTime",
     "Validated_Goal_Json": "String? // Phase 5 staging: raw JSON returned by Gemini prompt1; cleared to NULL after Goal is committed",
     "Refinement_Questions_Json": "String? // Phase 5 staging: raw JSON array returned by Gemini prompt2; cleared to NULL after Goal is committed",
     "Refinement_Answers_Json": "String? // Phase 6 bug-fix: persists user's typed refinement answers across process restarts; cleared to NULL after Goal is committed",
-    "Chosen_Start_Date": "DateTime? // Phase 14: the Monday chosen by the user in the date picker; cached here so FinalizeGoal and GenerateHabits can use it without re-prompting"
+    "Chosen_Start_Date": "DateTime? // Phase 14: the Monday chosen by the user in the date picker; cached here so FinalizeGoal and GenerateHabits can use it without re-prompting",
+    "Goal_Id": "Guid? // Phase 17/18: set by FinalizeGoalCommand when the Goal is created; identifies which Goal this session is building a schedule for; also serves as the blueprint cache key — if BlueprintJson is non-null, it belongs to this Goal",
+    "Blueprint_Json": "String? // Phase 16: intermediate output of prompt 2.1; non-null means the blueprint for Goal_Id is already cached and prompt 2.1 can be skipped on retry"
   },
 
   "Week": {

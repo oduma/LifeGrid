@@ -16,7 +16,6 @@ public sealed class OnboardingSessionConfiguration : IEntityTypeConfiguration<On
                .HasConversion<string>()
                .HasMaxLength(64);
         builder.Property(e => e.RawGoalDraft).HasMaxLength(2000);
-        builder.Property(e => e.IsComplete);
         builder.Property(e => e.LastActiveTimestamp);
         builder.Property(e => e.UserId);
         builder.HasOne<UserProfile>()
@@ -28,5 +27,7 @@ public sealed class OnboardingSessionConfiguration : IEntityTypeConfiguration<On
         builder.Property(e => e.RefinementQuestionsJson);
         builder.Property(e => e.RefinementAnswersJson);
         builder.Property(e => e.ChosenStartDate);
+        builder.Property(e => e.BlueprintJson);
+        builder.Property(e => e.GoalId);
     }
 }

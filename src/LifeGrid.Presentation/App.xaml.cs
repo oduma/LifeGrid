@@ -54,7 +54,7 @@ public partial class App
         // New or mid-onboarding user
         await _hudViewModel.LoadAsync();
         var sessionResult = await _mediator.Send(new GetOrCreateOnboardingSessionQuery());
-        if (sessionResult.IsSuccess && !sessionResult.Value!.IsComplete)
+        if (sessionResult.IsSuccess)
             await Shell.Current.GoToAsync("create-goal");
     }
 }

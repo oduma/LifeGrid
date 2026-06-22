@@ -27,7 +27,6 @@ public sealed class StartNewGoalSessionCommandTests
         result.IsSuccess.Should().BeTrue();
         saved.Should().NotBeNull();
         saved!.CurrentStep.Should().Be(OnboardingStep.Unstarted);
-        saved.IsComplete.Should().BeFalse();
     }
 
     [Fact]
