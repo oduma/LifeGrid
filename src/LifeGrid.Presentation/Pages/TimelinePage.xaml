@@ -3,22 +3,172 @@
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:controls="clr-namespace:LifeGrid.Presentation.Controls"
+    xmlns:converters="clr-namespace:LifeGrid.Presentation.Converters"
     x:Class="LifeGrid.Presentation.Pages.TimelinePage"
     Title="Timeline"
     BackgroundColor="{StaticResource Background}">
 
+    <ContentPage.Resources>
+        <converters:PenaltyStateToColorConverter x:Key="PenaltyStateToColorConverter" />
+    </ContentPage.Resources>
+
     <Grid RowDefinitions="*,Auto">
 
-        <ScrollView Grid.Row="0">
-            <Grid>
+        <CollectionView
+            x:Name="WeeksCollection"
+            Grid.Row="0"
+            ItemsSource="{Binding Weeks}"
+            Scrolled="OnCollectionViewScrolled">
+
+            <CollectionView.ItemsLayout>
+                <LinearItemsLayout
+                    Orientation="Vertical"
+                    SnapPointsType="MandatorySingle"
+                    SnapPointsAlignment="Center"
+                    ItemSpacing="8" />
+            </CollectionView.ItemsLayout>
+
+            <CollectionView.EmptyView>
                 <Label
-                    Text="Placeholder Text"
+                    Text="No weeks recorded yet"
+                    FontFamily="{StaticResource FontShareTechMono}"
+                    FontSize="13"
+                    TextColor="{StaticResource OnSurface}"
+                    Opacity="0.5"
                     HorizontalOptions="Center"
                     VerticalOptions="Center"
-                    HorizontalTextAlignment="Center"
-                    VerticalTextAlignment="Center" />
-            </Grid>
-        </ScrollView>
+                    HorizontalTextAlignment="Center" />
+            </CollectionView.EmptyView>
+
+            <CollectionView.ItemTemplate>
+                <DataTemplate>
+
+                    <!-- Week card — visual state driven by IsActive -->
+                    <Border
+                        Margin="16,4"
+                        Padding="16"
+                        BackgroundColor="{StaticResource Surface}"
+                        StrokeShape="RoundRectangle 2"
+                        StrokeThickness="1"
+                        Stroke="{StaticResource SurfaceBrush}">
+
+                        <!-- Active state: Primary border, full opacity -->
+                        <Border.Triggers>
+                            <DataTrigger TargetType="Border" Binding="{Binding IsActive}" Value="True">
+                                <Setter Property="Stroke" Value="{StaticResource Primary}" />
+                                <Setter Property="StrokeThickness" Value="2" />
+                                <Setter Property="Opacity" Value="1.0" />
+                            </DataTrigger>
+                            <DataTrigger TargetType="Border" Binding="{Binding IsActive}" Value="False">
+                                <Setter Property="Stroke" Value="{StaticResource SurfaceBrush}" />
+                                <Setter Property="StrokeThickness" Value="1" />
+                                <Setter Property="Opacity" Value="0.55" />
+                            </DataTrigger>
+                        </Border.Triggers>
+
+                        <VerticalStackLayout Spacing="12">
+
+                            <!-- Zone A: Week header -->
+                            <Grid ColumnDefinitions="*,Auto">
+
+                                <!-- Left: "Week of Jun 21" -->
+                                <Label
+                                    Grid.Column="0"
+                                    Text="{Binding WeekHeaderText}"
+                                    FontFamily="{StaticResource FontDMMono}"
+                                    FontSize="13"
+                                    FontAttributes="Bold"
+                                    TextColor="{StaticResource OnSurface}"
+                                    VerticalOptions="Center" />
+
+                                <!-- Right: "Active | SP: 15" -->
+                                <Label
+                                    Grid.Column="1"
+                                    Text="{Binding StatusSpText}"
+                                    FontFamily="{StaticResource FontShareTechMono}"
+                                    FontSize="12"
+                                    TextColor="{StaticResource Primary}"
+                                    VerticalOptions="Center"
+                                    HorizontalTextAlignment="End">
+                                    <Label.Triggers>
+                                        <DataTrigger TargetType="Label" Binding="{Binding IsActive}" Value="False">
+                                            <Setter Property="TextColor" Value="{StaticResource OnSurface}" />
+                                            <Setter Property="Opacity" Value="0.6" />
+                                        </DataTrigger>
+                                    </Label.Triggers>
+                                </Label>
+
+                            </Grid>
+
+                            <!-- Divider -->
+                            <BoxView
+                                HeightRequest="1"
+                                BackgroundColor="{StaticResource SurfaceBrush}"
+                                Margin="0,0" />
+
+                            <!-- Zone B: Nested goal items -->
+                            <VerticalStackLayout
+                                BindableLayout.ItemsSource="{Binding Goals}"
+                                Spacing="10">
+
+                                <BindableLayout.ItemTemplate>
+                                    <DataTemplate>
+
+                                        <Grid ColumnDefinitions="8,*" ColumnSpacing="10">
+
+                                            <!-- Penalty colour indicator dot -->
+                                            <BoxView
+                                                Grid.Column="0"
+                                                WidthRequest="6"
+                                                HeightRequest="6"
+                                                CornerRadius="3"
+                                                Color="{Binding PenaltyState, Converter={StaticResource PenaltyStateToColorConverter}}"
+                                                VerticalOptions="Start"
+                                                Margin="0,4,0,0" />
+
+                                            <!-- Description + metrics -->
+                                            <VerticalStackLayout Grid.Column="1" Spacing="2">
+
+                                                <Label
+                                                    Text="{Binding GoalDescription}"
+                                                    FontFamily="{StaticResource FontShareTechMono}"
+                                                    FontSize="13"
+                                                    TextColor="{Binding PenaltyState, Converter={StaticResource PenaltyStateToColorConverter}}"
+                                                    LineBreakMode="TailTruncation" />
+
+                                                <Label
+                                                    Text="{Binding MetricsText}"
+                                                    FontFamily="{StaticResource FontShareTechMono}"
+                                                    FontSize="11"
+                                                    TextColor="{StaticResource OnSurface}"
+                                                    Opacity="0.65" />
+
+                                            </VerticalStackLayout>
+
+                                        </Grid>
+
+                                    </DataTemplate>
+                                </BindableLayout.ItemTemplate>
+
+                                <!-- Empty goal-list placeholder -->
+                                <BindableLayout.EmptyView>
+                                    <Label
+                                        Text="No goals this week"
+                                        FontFamily="{StaticResource FontShareTechMono}"
+                                        FontSize="11"
+                                        TextColor="{StaticResource OnSurface}"
+                                        Opacity="0.4" />
+                                </BindableLayout.EmptyView>
+
+                            </VerticalStackLayout>
+
+                        </VerticalStackLayout>
+                    </Border>
+
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+
+        </CollectionView>
 
         <controls:AdBannerView Grid.Row="1" />
 

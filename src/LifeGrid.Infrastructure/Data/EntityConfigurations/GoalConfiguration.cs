@@ -17,6 +17,7 @@ public sealed class GoalConfiguration : IEntityTypeConfiguration<Goal>
         builder.Property(e => e.AmbientTag).HasMaxLength(100);
         builder.Property(e => e.Duration).HasMaxLength(50);
         builder.Property(e => e.StartDate);
+        builder.Property(e => e.CreationDate);
         builder.Property(e => e.DeadlineDate);
         builder.Property(e => e.Status)
                .HasConversion<string>()

@@ -45,10 +45,13 @@ public sealed class RecalculateGoalScheduleCommandHandler(
 
         var baselineJson = BuildBaselineJson(goal, request.OverwhelmedComment);
 
+        var recalcStartDate = Domain.Goal.Goal.CalculateStartDate(DateTime.UtcNow);
+
         var serviceResult = await habitGenerationService.GenerateScheduleAsync(
             goal.Description,
             goal.DeadlineDate.ToString("yyyy-MM-dd"),
             baselineJson,
+            recalcStartDate,
             cancellationToken);
 
         if (!serviceResult.IsSuccess)

@@ -52,6 +52,9 @@ public sealed class FinalizeGoalCommandHandler(
         if (dto is null)
             return Result.Failure("Validated goal data could not be parsed.");
 
+        if (session.ChosenStartDate is null)
+            return Result.Failure("No chosen start date found in session.");
+
         List<RefinementQuestionDto>? questions;
         try
         {
@@ -71,6 +74,7 @@ public sealed class FinalizeGoalCommandHandler(
             dto.AmbientTag,
             dto.Duration,
             dto.DeadlineDate,
+            session.ChosenStartDate.Value,
             DateTime.Now);
 
         var answerLookup = request.UserAnswers.ToDictionary(a => a.RankOrder, a => a.Answer);

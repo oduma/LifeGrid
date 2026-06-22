@@ -8,5 +8,6 @@ public interface IGeminiHabitGenerationService
         string            goalAsStated,
         string            deadlineAsStated,
         string            baselineAnswersJson,
+        DateTime          startDate,
         CancellationToken ct = default);
 }

@@ -42,7 +42,7 @@ public sealed class GeminiGoalValidationServiceTests
             """;
         ArrangeResponse(json);
 
-        var result = await _service.ValidateGoalAsync("Run a marathon in 6 months");
+        var result = await _service.ValidateGoalAsync("Run a marathon in 6 months", new DateTime(2026, 6, 22));
 
         result.IsSuccess.Should().BeTrue();
         result.Value.Should().BeOfType<GeminiValidationResult.Valid>();
@@ -62,7 +62,7 @@ public sealed class GeminiGoalValidationServiceTests
             """;
         ArrangeResponse(json);
 
-        var result = await _service.ValidateGoalAsync("I want to be fit");
+        var result = await _service.ValidateGoalAsync("I want to be fit", new DateTime(2026, 6, 22));
 
         result.IsSuccess.Should().BeTrue();
         result.Value.Should().BeOfType<GeminiValidationResult.Invalid>();
@@ -75,7 +75,7 @@ public sealed class GeminiGoalValidationServiceTests
     {
         ArrangeResponse("not valid json {{{");
 
-        var result = await _service.ValidateGoalAsync("some goal");
+        var result = await _service.ValidateGoalAsync("some goal", new DateTime(2026, 6, 22));
 
         result.IsSuccess.Should().BeFalse();
         result.Error.Should().NotBeNullOrEmpty();
@@ -94,7 +94,7 @@ public sealed class GeminiGoalValidationServiceTests
             """;
         ArrangeResponse(json);
 
-        var result = await _service.ValidateGoalAsync("Learn something");
+        var result = await _service.ValidateGoalAsync("Learn something", new DateTime(2026, 6, 22));
 
         result.IsSuccess.Should().BeTrue();
         result.Value.Should().BeOfType<GeminiValidationResult.Invalid>();
@@ -105,7 +105,7 @@ public sealed class GeminiGoalValidationServiceTests
     {
         ArrangeResponse("""{ "goal": {} }""");
 
-        var result = await _service.ValidateGoalAsync("some goal");
+        var result = await _service.ValidateGoalAsync("some goal", new DateTime(2026, 6, 22));
 
         result.IsSuccess.Should().BeFalse();
     }
@@ -120,7 +120,7 @@ public sealed class GeminiGoalValidationServiceTests
                 Arg.Any<CancellationToken>())
             .Returns(Task.FromException<ChatResponse>(new HttpRequestException("Network error")));
 
-        var result = await _service.ValidateGoalAsync("Run a marathon in 6 months");
+        var result = await _service.ValidateGoalAsync("Run a marathon in 6 months", new DateTime(2026, 6, 22));
 
         result.IsSuccess.Should().BeFalse();
         result.Error.Should().Contain("Gemini request failed");
@@ -140,7 +140,7 @@ public sealed class GeminiGoalValidationServiceTests
                 Arg.Any<CancellationToken>())
             .Returns(Task.FromException<ChatResponse>(ex));
 
-        var result = await _service.ValidateGoalAsync("Run a marathon in 6 months");
+        var result = await _service.ValidateGoalAsync("Run a marathon in 6 months", new DateTime(2026, 6, 22));
 
         result.IsSuccess.Should().BeFalse();
         result.Error.Should().Contain("rate limit");

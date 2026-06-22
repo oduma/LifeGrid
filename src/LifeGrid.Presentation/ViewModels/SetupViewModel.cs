@@ -9,6 +9,7 @@ using LifeGrid.Domain.Onboarding;
 using MediatR;
 using System.Collections.ObjectModel;
 using System.Text.Json;
+using GoalAggregate = LifeGrid.Domain.Goal.Goal;
 
 namespace LifeGrid.Presentation.ViewModels;
 
@@ -19,11 +20,24 @@ public partial class CreateGoalViewModel(IMediator mediator, AppShellViewModel a
     private CancellationTokenSource? _debounceCts;
     private CancellationTokenSource? _answerDebounceCts;
     private bool _isLoading;
+    private bool _goalAlreadyFinalized;
 
-    [ObservableProperty] private string _goalDraft            = string.Empty;
-    [ObservableProperty] private bool   _isValidating         = false;
-    [ObservableProperty] private string _validationError      = string.Empty;
-    [ObservableProperty] private bool   _isRefinementActive   = false;
+    private static readonly DateTime _anchorMonday = GoalAggregate.CalculateStartDate(DateTime.Today);
+
+    private readonly List<DateTime> _availableMondays =
+        Enumerable.Range(0, 52).Select(w => _anchorMonday.AddDays(w * 7)).ToList();
+
+    public IReadOnlyList<string> AvailableMondayLabels { get; } =
+        Enumerable.Range(0, 52)
+                  .Select(w => _anchorMonday.AddDays(w * 7).ToString("MMM d, yyyy"))
+                  .ToList();
+
+    [ObservableProperty] private string   _goalDraft            = string.Empty;
+    [ObservableProperty] private bool     _isValidating         = false;
+    [ObservableProperty] private string   _validationError      = string.Empty;
+    [ObservableProperty] private bool     _isRefinementActive   = false;
+    [ObservableProperty] private int      _selectedMondayIndex  = 0;
+    [ObservableProperty] private DateTime _chosenStartDate      = _anchorMonday;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsEntryFlowVisible))]
@@ -71,6 +85,12 @@ public partial class CreateGoalViewModel(IMediator mediator, AppShellViewModel a
         }
     }
 
+    partial void OnSelectedMondayIndexChanged(int value)
+    {
+        if ((uint)value < (uint)_availableMondays.Count)
+            ChosenStartDate = _availableMondays[value];
+    }
+
     partial void OnGoalDraftChanged(string value)
     {
         if (!_isLoading) ScheduleAutoSave(value);
@@ -116,7 +136,7 @@ public partial class CreateGoalViewModel(IMediator mediator, AppShellViewModel a
         ValidationError = string.Empty;
         IsValidating    = true;
 
-        var result = await mediator.Send(new TriggerGoalValidationCommand());
+        var result = await mediator.Send(new TriggerGoalValidationCommand(ChosenStartDate));
 
         IsValidating = false;
 
@@ -134,19 +154,24 @@ public partial class CreateGoalViewModel(IMediator mediator, AppShellViewModel a
     private async Task ConfirmAndInitializeAsync()
     {
         _answerDebounceCts?.Cancel();
+        ValidationError = string.Empty;
 
-        var userAnswers = RefinementItems
-            .Select(item => (item.RankOrder, item.Answer))
-            .ToList();
-
-        var finalizeResult = await mediator.Send(new FinalizeGoalCommand(userAnswers));
-        if (!finalizeResult.IsSuccess)
+        if (!_goalAlreadyFinalized)
         {
-            ValidationError = finalizeResult.Error ?? "Could not finalize goal. Please try again.";
-            return;
+            var userAnswers = RefinementItems
+                .Select(item => (item.RankOrder, item.Answer))
+                .ToList();
+
+            var finalizeResult = await mediator.Send(new FinalizeGoalCommand(userAnswers));
+            if (!finalizeResult.IsSuccess)
+            {
+                ValidationError = finalizeResult.Error ?? "Could not finalize goal. Please try again.";
+                return;
+            }
+
+            _goalAlreadyFinalized = true;
         }
 
-        IsRefinementActive = false;
         await AutoResumeHabitGenerationAsync();
     }
 
@@ -169,8 +194,13 @@ public partial class CreateGoalViewModel(IMediator mediator, AppShellViewModel a
         if (!habitResult.IsSuccess)
         {
             ValidationError = habitResult.Error ?? "Habit generation failed. Please try again.";
+            // Leave IsRefinementActive unchanged: if the user came from refinement they stay
+            // there and can tap "Confirm & Initialize" again to retry; if this is an auto-resume
+            // on page load the user will see the error in STATE A.
             return;
         }
+
+        IsRefinementActive = false;
 
         switch (habitResult.Value)
         {

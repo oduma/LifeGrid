@@ -14,4 +14,5 @@ public interface IWeekRepository
     Task RemoveWeekGoalRangeAsync(IReadOnlyList<WeekGoalEntity> weekGoals, CancellationToken ct = default);
     Task<int> GetMaxWeekGoalNumberAsync(Guid goalId, CancellationToken ct = default);
     Task<int> GetHistoricalXpByGoalIdAsync(Guid goalId, CancellationToken ct = default);
+    Task<IReadOnlyList<WeekEntity>> GetTimelineAsync(CancellationToken ct = default);
 }

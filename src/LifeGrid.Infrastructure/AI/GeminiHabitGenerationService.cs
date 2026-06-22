@@ -22,15 +22,16 @@ internal sealed class GeminiHabitGenerationService(IChatClient chatClient)
         string            goalAsStated,
         string            deadlineAsStated,
         string            baselineAnswersJson,
+        DateTime          startDate,
         CancellationToken ct = default)
     {
         // ── Call 1: Blueprint (prompt2.1) ─────────────────────────────────
-        var today   = DateTime.UtcNow.ToString("MMMM d, yyyy");
-        var prompt1 = $"[Current date: {today}]\n\n" +
-                      Prompt21Template
-                          .Replace("${USER_GOAL}",                 goalAsStated)
-                          .Replace("${USER_DEADLINE}",             deadlineAsStated)
-                          .Replace("${USER_BASELINE_ANSWERS_JSON}", baselineAnswersJson);
+        var startDateStr = startDate.ToString("MMMM d, yyyy");
+        var prompt1 = Prompt21Template
+                          .Replace("${USER_GOAL}",                  goalAsStated)
+                          .Replace("${USER_DEADLINE}",              deadlineAsStated)
+                          .Replace("${USER_BASELINE_ANSWERS_JSON}", baselineAnswersJson)
+                          .Replace("${START_DATE}",                 startDateStr);
 
         string call1Raw;
         try
@@ -59,7 +60,9 @@ internal sealed class GeminiHabitGenerationService(IChatClient chatClient)
 
         // ── Call 2: Schedule (prompt2.2) ──────────────────────────────────
         // Pass the raw Call 1 JSON directly — no re-serialization
-        var prompt2 = Prompt22Template.Replace("${COACH_SPECIALIST_PARAMETERS_JSON}", call1Raw);
+        var prompt2 = Prompt22Template
+            .Replace("${COACH_SPECIALIST_PARAMETERS_JSON}", call1Raw)
+            .Replace("${START_DATE}", startDateStr);
 
         string call2Raw;
         try

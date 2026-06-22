@@ -41,6 +41,7 @@ public sealed class WeekRepositoryTests : IDisposable
         var goal = Goal.Create(
             profile.UserId, "Run a marathon", "Physical", "6 months",
             new DateTime(2026, 12, 10, 0, 0, 0, DateTimeKind.Utc),
+            new DateTime(2026, 6, 22),
             new DateTime(2026, 6, 16));
         _db.Goals.Add(goal);
         await _db.SaveChangesAsync();

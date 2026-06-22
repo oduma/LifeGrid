@@ -5,7 +5,8 @@ using System.Text.Json;
 
 namespace LifeGrid.Application.Onboarding.Commands;
 
-public record TriggerGoalValidationCommand : IRequest<Result<IReadOnlyList<RefinementQuestionDto>>>;
+public record TriggerGoalValidationCommand(DateTime ChosenStartDate)
+    : IRequest<Result<IReadOnlyList<RefinementQuestionDto>>>;
 
 public sealed class TriggerGoalValidationCommandHandler(
     IOnboardingRepository           repository,
@@ -23,10 +24,11 @@ public sealed class TriggerGoalValidationCommandHandler(
         if (string.IsNullOrWhiteSpace(session.RawGoalDraft))
             return Result<IReadOnlyList<RefinementQuestionDto>>.Failure("Goal draft is empty.");
 
+        session.SetChosenStartDate(request.ChosenStartDate);
         session.AdvanceToAwaitingValidation();
         await repository.UpsertAsync(session, cancellationToken);
 
-        var validationResult = await gemini.ValidateGoalAsync(session.RawGoalDraft, cancellationToken);
+        var validationResult = await gemini.ValidateGoalAsync(session.RawGoalDraft, request.ChosenStartDate, cancellationToken);
         if (!validationResult.IsSuccess)
         {
             session.RevertToGoalDraftCaptured();

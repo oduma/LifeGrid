@@ -94,6 +94,11 @@
                             </BindableLayout.ItemTemplate>
                         </VerticalStackLayout>
 
+                        <Label
+                            Text="{Binding ValidationError}"
+                            IsVisible="{Binding ValidationError, Converter={StaticResource StringNotEmpty}}"
+                            TextColor="{StaticResource Error}" />
+
                         <Button
                             Text="Confirm &amp; Initialize"
                             Command="{Binding ConfirmAndInitializeCommand}"
@@ -141,6 +146,12 @@
                             <Entry
                                 Text="{Binding GoalDraft}"
                                 Placeholder="e.g. Run a marathon in 6 months" />
+
+                            <Label Text="Start date (Mondays only):" />
+
+                            <Picker
+                                ItemsSource="{Binding AvailableMondayLabels}"
+                                SelectedIndex="{Binding SelectedMondayIndex}" />
 
                             <Button
                                 Text="Next"

@@ -2270,3 +2270,299 @@ Deferred per established pattern. `SwipeView` bindings, `OverwhelmedRecalculateV
 5. **`GetByIdAsync` includes `RefinementAnswers`:** `GoalRepository.GetByIdAsync` uses `.Include(g => g.RefinementAnswers)` because `RefinementAnswers` is mapped as `OwnsMany` with a separate table (`GoalRefinementAnswers`) and is not auto-loaded. This ensures the baseline JSON for the Gemini recalculation is complete.
 
 **Final test count:** 245 total — 94 Domain + 87 Application + 64 Infrastructure (+28 new).
+
+---
+
+# Phase 13 — Setup Flow Hardening: Picker-Based Start Date & Retry UX
+
+**Source:** Corrections applied 2026-06-22 during Phase 14 implementation verification.  
+**Plan:** `docs/plans/phase-13-setup-corrections.md`
+
+---
+
+## P13.1 Motivation
+
+Phase 14's original spec called for a MAUI `DatePicker` with a code-behind snap handler to enforce Monday-only selection. During device testing three problems surfaced:
+
+1. The standard MAUI `DatePicker` cannot visually grey out non-Monday calendar cells on Android — it only supports `MinimumDate`/`MaximumDate`. Non-Monday selection was silently corrected after the fact, which is confusing.
+2. The `DateChangedEventArgs.NewDate` property returns `DateTime?` (not `DateTime`) in MAUI .NET 10, requiring null-guard handling not present in the original plan.
+3. The two sequential Gemini calls in `GenerateScheduleAsync` can exceed the default 100-second `HttpClient` timeout, producing a "Socket closed" error on the second call. Additionally, when that call failed, the ViewModel unconditionally cleared `IsRefinementActive` before the call, leaving the user on STATE A (goal entry form) with no obvious retry path.
+
+---
+
+## P13.2 Monday-Only Picker (Supersedes P14.2 DatePicker Spec)
+
+Replace the `DatePicker` control on the goal entry screen with a MAUI `Picker` pre-populated with upcoming Mondays only.
+
+| Attribute | Detail |
+|---|---|
+| Control | `Picker` (MAUI) — replaces `DatePicker` |
+| Item source | `AvailableMondayLabels: IReadOnlyList<string>` — 52 entries formatted `"MMM d, yyyy"` |
+| Selection binding | `SelectedIndex ↔ SelectedMondayIndex` (int, two-way) |
+| Sync | `partial void OnSelectedMondayIndexChanged(int)` updates `ChosenStartDate` |
+| Default | Index 0 = current week's Monday (`_anchorMonday` static field via `Goal.CalculateStartDate(DateTime.Today)`) |
+| Enforcement | Non-Monday dates simply do not appear — no snap handler needed |
+| Code-behind removed | `OnStartDatePickerDateSelected` handler deleted; `GoalAggregate` using alias removed from `SetupPage.xaml.cs` |
+
+**New ViewModel properties (replaces `EarliestSelectableDate: DateTime`):**
+
+```csharp
+private static readonly DateTime _anchorMonday = GoalAggregate.CalculateStartDate(DateTime.Today);
+private readonly List<DateTime>  _availableMondays = Enumerable.Range(0, 52)
+    .Select(w => _anchorMonday.AddDays(w * 7)).ToList();
+
+public IReadOnlyList<string> AvailableMondayLabels { get; } = Enumerable.Range(0, 52)
+    .Select(w => _anchorMonday.AddDays(w * 7).ToString("MMM d, yyyy")).ToList();
+
+[ObservableProperty] private int      _selectedMondayIndex = 0;
+[ObservableProperty] private DateTime _chosenStartDate     = _anchorMonday;
+
+partial void OnSelectedMondayIndexChanged(int value)
+{
+    if ((uint)value < (uint)_availableMondays.Count)
+        ChosenStartDate = _availableMondays[value];
+}
+```
+
+---
+
+## P13.3 HttpClient Hardening
+
+The `HttpClient` registered in `InfrastructureServiceExtensions` was a default singleton with no configuration, giving it the 100-second .NET default timeout. The habit generation pipeline makes two sequential Gemini calls; the second can exceed 100 seconds on slower connections.
+
+**New registration:**
+
+```csharp
+services.AddSingleton<HttpClient>(_ =>
+{
+    var handler = new SocketsHttpHandler
+    {
+        KeepAlivePingPolicy  = HttpKeepAlivePingPolicy.WithActiveRequests,
+        KeepAlivePingDelay   = TimeSpan.FromSeconds(20),
+        KeepAlivePingTimeout = TimeSpan.FromSeconds(15),
+    };
+    return new HttpClient(handler) { Timeout = TimeSpan.FromMinutes(5) };
+});
+```
+
+- **5-minute timeout** — headroom for Gemini 2.5 Pro reasoning through a full multi-week habit schedule.
+- **Keep-alive pings** — prevents Android's network stack from dropping the idle TCP connection between the two sequential Gemini calls.
+
+---
+
+## P13.4 Habit Generation Retry UX
+
+When `ConfirmAndInitializeAsync` called `FinalizeGoalCommand` successfully and then `AutoResumeHabitGenerationAsync` failed, `IsRefinementActive` was already `false` (set before the async call). This left the user on STATE A (goal entry form) with an error message and no way to retry without redoing the entire setup.
+
+**Fixes:**
+
+### `_goalAlreadyFinalized` flag
+
+A private `bool _goalAlreadyFinalized` is added to `CreateGoalViewModel`. `FinalizeGoalCommand` is only dispatched when this flag is `false`. Once it succeeds the flag is set to `true`. Subsequent "Confirm & Initialize" taps (retry scenario) skip finalization and invoke `AutoResumeHabitGenerationAsync` directly.
+
+### `IsRefinementActive` lifecycle moved to success path
+
+`IsRefinementActive = false` is removed from `ConfirmAndInitializeAsync` and moved inside `AutoResumeHabitGenerationAsync` — set only **after** a successful `GenerateHabitsCommand` result. On failure, `IsRefinementActive` retains its pre-call value:
+
+- Called from `ConfirmAndInitializeAsync` (user just answered refinements): remains `true` → user stays on STATE D with error + retry button.
+- Called from `LoadAsync` (resume after crash): remains `false` → user sees STATE A with error (acceptable; they can re-enter the flow).
+
+`ValidationError` is cleared at the top of `ConfirmAndInitializeAsync` so stale errors from a prior attempt do not persist.
+
+---
+
+## P13.5 Acceptance Criteria
+
+- Goal entry screen shows a `Picker` listing upcoming Mondays only; no other dates are selectable.
+- Default selection is the current week's Monday.
+- HttpClient timeout on Gemini calls is 5 minutes (verifiable in `InfrastructureServiceExtensions`).
+- A habit generation failure leaves the user on STATE D (refinement view) with the error message and a functional "Confirm & Initialize" retry button.
+- `dotnet build LifeGrid.slnx` → 0 errors. `dotnet test` → all 253 tests pass.
+
+## P13.6 As-Built Outcome (2026-06-22)
+
+All acceptance criteria met. `dotnet build` → **0 Error(s)**. `dotnet test` → **253 tests passed** (93 Domain + 96 Application + 64 Infrastructure).
+
+---
+
+# Phase 14 — Goal Start Date: User-Chosen Scheduling Anchor
+
+**Source:** Correction agreed in chat 2026-06-22 (supersedes Phase 10 clarification Q1).  
+**Plan:** `docs/plans/phase-14-goal-start-date.md`
+
+---
+
+## P14.1 Motivation & Correction
+
+Phase 10 (Q1) established that `Goal.StartDate` is system-assigned — auto-calculated from `creationDate` as the first Monday on or after creation. This phase supersedes that decision: the start date is now **explicitly chosen by the user** via a Monday-restricted date picker on the goal entry screen. The chosen date serves as the temporal anchor for:
+
+- Relative deadline calculation in Prompt 1 (e.g., "6 months" = startDate + 6 months)
+- Week scheduling in Prompts 2.1 and 2.2 (Week 1 starts on startDate)
+- The persisted `Goal.StartDate` column
+
+---
+
+## P14.2 Date Picker Rules
+
+- The date picker appears on the same screen as the goal text `Entry` (State A — goal entry form), before the user clicks "Next".
+- Only **Mondays** are valid choices. The minimum selectable date is the **Monday of the current week** (`CalculateStartDate(DateTime.Today)` where `CalculateStartDate` finds the first Monday on or after the given date).
+- All future Mondays are enabled; past dates and any non-Monday date are not valid.
+- Implementation: use a MAUI `DatePicker` with `MinimumDate = currentWeekMonday`. A `DateSelected` code-behind event handler snaps any non-Monday selection to the next Monday using `Goal.CalculateStartDate()`.
+- The control displays in the format `ddd, MMM d yyyy` (e.g., `Mon, Jun 22 2026`).
+
+---
+
+## P14.3 Session Persistence
+
+`OnboardingSession` gains a new nullable `ChosenStartDate` field so the chosen date survives app closure mid-flow.
+
+| Change | Detail |
+|---|---|
+| New domain property | `public DateTime? ChosenStartDate { get; private set; }` |
+| New domain method | `public void SetChosenStartDate(DateTime date)` — sets field, updates `LastActiveTimestamp` |
+| `Reset()` updated | Clears `ChosenStartDate = null` |
+| EF Core column | Nullable `DATETIME` in `OnboardingProgressCache`; existing rows default to `NULL` |
+
+---
+
+## P14.4 `Goal` Entity Changes
+
+| Change | Detail |
+|---|---|
+| `Create()` signature | Adds `DateTime startDate` parameter (user-chosen Monday) and retains `DateTime creationDate` (audit timestamp, `= DateTime.Now` from handler) |
+| `StartDate` assignment | `StartDate = startDate` — direct assignment, no calculation |
+| New `CreationDate` property | `public DateTime CreationDate { get; private set; }` — stored as audit timestamp |
+| `CalculateStartDate()` retained | Static helper stays on `Goal` for use by ViewModel default, `RecalculateGoalScheduleCommand`, and date-picker snap logic |
+| EF Core column | Non-nullable `DATETIME` column `CreationDate` added to `Goals` table; default SQL value `CURRENT_TIMESTAMP` applied to existing rows via migration |
+
+---
+
+## P14.5 Prompt Contract Changes
+
+### Prompt 1 (`prompt1.txt`)
+- Remove the hardcoded `June 10, 2026` date.
+- Replace with `${START_DATE}` placeholder injected at runtime.
+- Updated instruction line: `"The goal start date (the user's chosen first Monday for tracking) is ${START_DATE}. All relative deadline calculations MUST use this date as the base."`
+- Runtime injection: `Prompt1Template.Replace("${USER_INPUT_TEXT}", rawDraft).Replace("${START_DATE}", startDate.ToString("MMMM d, yyyy"))` — remove the prepended `[Current date: ...]` header.
+
+### Prompt 2.1 (`prompt2.1.txt`)
+- Replace `The current baseline date is June 10, 2026.` with `The goal start date is ${START_DATE}.`
+- Replace all references to `June 10, 2026` in calculation instructions with `the start date (${START_DATE})`.
+- Add `"start_date": "${START_DATE}"` field to **both** Case A and Case B output JSON schemas (so the value flows through to Prompt 2.2).
+- Runtime injection: same `Replace("${START_DATE}", ...)` approach, replacing the prepended header.
+
+### Prompt 2.2 (`prompt2.2.txt`)
+- Replace `The current baseline date for calendar tracking is June 10, 2026.` with `Use the \`start_date\` field from the input JSON as the start date for Week 1. The \`start_date\` for Week 1 in the output MUST equal the input \`start_date\`.`
+- No `${START_DATE}` placeholder needed — the value flows in via the Prompt 2.1 raw JSON passed as `${COACH_SPECIALIST_PARAMETERS_JSON}`.
+
+---
+
+## P14.6 Application Interface Changes
+
+| Interface | Method | Change |
+|---|---|---|
+| `IGeminiGoalValidationService` | `ValidateGoalAsync` | Add `DateTime startDate` parameter |
+| `IGeminiHabitGenerationService` | `GenerateScheduleAsync` | Add `DateTime startDate` parameter |
+
+---
+
+## P14.7 Command Changes
+
+| Command | Change |
+|---|---|
+| `TriggerGoalValidationCommand` | Add `DateTime ChosenStartDate` record parameter; handler calls `session.SetChosenStartDate(request.ChosenStartDate)` and passes `request.ChosenStartDate` to `ValidateGoalAsync` |
+| `FinalizeGoalCommand` | Read `session.ChosenStartDate`; guard if null; pass as `startDate` to `Goal.Create()` alongside `creationDate: DateTime.Now` |
+| `GenerateHabitsCommand` | Pass `goal.StartDate` as `startDate` to `GenerateScheduleAsync` |
+| `RecalculateGoalScheduleCommand` | Pass `Goal.CalculateStartDate(DateTime.UtcNow)` (current-week Monday) as `startDate` to `GenerateScheduleAsync` |
+
+---
+
+## P14.8 Presentation Changes
+
+| File | Change |
+|---|---|
+| `SetupPage.xaml` | Add `DatePicker` (bound to `ChosenStartDate`, `MinimumDate` bound to `MinimumStartDate`) and a helper `Label` inside State A (goal entry form), above the goal text `Entry` |
+| `SetupPage.xaml.cs` | Add `OnStartDateSelected` handler — if selected date is not a Monday, snap to `Goal.CalculateStartDate(e.NewDate)` |
+| `SetupViewModel.cs` | Add `[ObservableProperty] private DateTime _chosenStartDate` (default: current week's Monday); add `public DateTime MinimumStartDate { get; }` (same value); pass `ChosenStartDate` to `TriggerGoalValidationCommand` |
+
+---
+
+## P14.9 EF Core Migration
+
+Single migration named **`AddGoalCreationDateAndSessionChosenStartDate`**:
+1. `Goals` table: add `CreationDate DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP`
+2. `OnboardingProgressCache` table: add `ChosenStartDate DATETIME NULL`
+
+---
+
+## P14.10 TDD — Tests Affected
+
+### Tests Updated (signature breakage)
+
+| File | Why it breaks | Fix |
+|---|---|---|
+| `GoalStartDateTests.cs` | Tests verify `Create(creationDate=X).StartDate == autoCalcMonday` | Replace 3 tests; keep `CalculateStartDate` formula tests |
+| `GoalTests.cs` | `BuildGoal()` uses `creationDate: DateTime.Now` | Pass explicit `startDate: Monday` |
+| `GoalDomainMutationTests.cs` | `Goal.Create()` calls | Add `startDate` + `creationDate` args |
+| `AbandonGoalCommandHandlerTests.cs` | `Goal.Create()` calls | Same |
+| `RecalculateGoalScheduleCommandHandlerTests.cs` | `Goal.Create()` + `GenerateScheduleAsync` mock | Same + add `startDate` arg to mock |
+| `GetTimelineQueryHandlerTests.cs` | `MakeGoal()` helper | Same |
+| `GetGoalsQueryHandlerTests.cs` | `Goal.Create()` calls | Same |
+| `FinalizeGoalCommandHandlerTests.cs` | Session needs `ChosenStartDate` set before command runs | Call `session.SetChosenStartDate(monday)` in test setup |
+| `TriggerGoalValidationCommandHandlerTests.cs` | Command needs `ChosenStartDate` param; mock needs `startDate` | Update all 7 tests |
+| `GenerateHabitsCommandTests.cs` | `GenerateScheduleAsync` mock needs `startDate` | Add `startDate` to mock `Returns` |
+| `GeminiGoalValidationServiceTests.cs` | `ValidateGoalAsync` signature change | Add `startDate` param to all calls |
+| `GeminiHabitGenerationServiceTests.cs` | `GenerateScheduleAsync` signature change | Add `startDate` param to all calls |
+
+### New Tests
+
+| File | New Tests |
+|---|---|
+| `GoalStartDateTests.cs` | `Create_WithExplicitStartDate_StoresItDirectly`; `Create_StoresCreationDate` |
+| `TriggerGoalValidationCommandHandlerTests.cs` | `ChosenStartDate_IsStoredInSession`; `ChosenStartDate_IsPassedToGemini` |
+| `FinalizeGoalCommandHandlerTests.cs` | `UsesSessionChosenStartDate_ForGoalStartDate` |
+| `GenerateHabitsCommandTests.cs` | `GoalStartDate_IsPassedToHabitGenerationService` |
+
+---
+
+## P14.11 Week Deduplication (Existing Behavior Confirmed)
+
+`GenerateHabitsCommand` already checks `weekRepository.GetByStartDateAsync(weekDto.StartDate)` before creating a new `Week`. Since Prompt 2.2 will now emit week start dates anchored to the user's chosen Monday, two goals with the same chosen start date will share `Week` rows with separate `WeekGoal` items — exactly as required. No code change needed for this rule.
+
+---
+
+## P14.12 Acceptance Criteria
+
+- `dotnet build LifeGrid.slnx` → 0 errors.
+- `dotnet test` → all prior 245 tests pass + new Phase 14 tests.
+- Goal entry screen shows a Monday-only start date selector defaulted to the current week's Monday.
+- After full goal creation, `Goal.StartDate` in the DB equals the user's chosen date.
+- Gemini's generated schedule Week 1 start date matches the user's chosen Monday.
+- Two goals created with the same chosen start date share the same `Week` row in the DB (verified via SQLite query).
+
+---
+
+## P14.13 As-Built Outcome (2026-06-22)
+
+All acceptance criteria met. `dotnet build` → **0 Error(s)**. `dotnet test` → **253 tests passed** (93 Domain + 96 Application + 64 Infrastructure).
+
+### Corrections vs. Plan
+
+| Item | Planned (P14) | As Built |
+|---|---|---|
+| Date picker control | MAUI `DatePicker` with `MinimumDate` + `DateSelected` snap handler | **Superseded by P13.2** — replaced with `Picker` showing only valid Mondays |
+| Snap handler | `OnStartDateSelected` in `SetupPage.xaml.cs`; snaps non-Monday to next Monday | Removed entirely (Picker makes it redundant) |
+| ViewModel properties | `ChosenStartDate: DateTime` + `EarliestSelectableDate: DateTime` | `AvailableMondayLabels`, `SelectedMondayIndex`, `ChosenStartDate`; `EarliestSelectableDate` removed |
+| P14.2 format clause | `Format="ddd, MMM d yyyy"` | Not applicable to Picker control |
+| Additional test files | Files listed in P14.10 only | 9 additional test files discovered at build time also required `Goal.Create()` signature updates: `GoalRefinementAnswerTests.cs`, `GoalLinkedBadHabitsTests.cs`, `GetViceSurveyQuestionsQueryTests.cs`, `SubmitViceSurveyCommandTests.cs` (×5 occurrences), `WeekRepositoryTests.cs`, `GoalRefinementAnswerSchemaTests.cs`, `HabitRepositoryTests.cs`, `FactoryResetServiceTests.cs`, `WeekDeduplicationTests.cs` |
+| HttpClient | Not addressed in P14 | **Superseded by P13.3** — 5-minute timeout + keep-alive pings |
+| Retry UX | Not addressed in P14 | **Superseded by P13.4** — `_goalAlreadyFinalized` flag + deferred `IsRefinementActive` clear |
+
+### Final Test Counts
+
+| Layer | Tests | Result |
+|---|---|---|
+| Domain | 93 | All passed |
+| Application | 96 | All passed |
+| Infrastructure | 64 | All passed |
+| **Total** | **253** | **All passed** |

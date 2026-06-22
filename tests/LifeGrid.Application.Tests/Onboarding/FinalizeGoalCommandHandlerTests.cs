@@ -31,6 +31,8 @@ public sealed class FinalizeGoalCommandHandlerTests
         new(2, "What is your current baseline?")
     };
 
+    private static readonly DateTime SampleChosenStartDate = new(2026, 6, 22);
+
     private static OnboardingSession SessionInRefinementActive()
     {
         var s = OnboardingSession.Create();
@@ -39,6 +41,7 @@ public sealed class FinalizeGoalCommandHandlerTests
         s.AdvanceToRefinementQuestionsActive(
             JsonSerializer.Serialize(SampleDto),
             JsonSerializer.Serialize(SampleQuestions));
+        s.SetChosenStartDate(SampleChosenStartDate);
         return s;
     }
 
@@ -105,7 +108,7 @@ public sealed class FinalizeGoalCommandHandlerTests
         savedGoal.Description.Should().Be("Run a marathon");
         savedGoal.RefinementAnswers.Should().HaveCount(2);
         savedGoal.RefinementAnswers.First(r => r.RankOrder == 1).Answer.Should().Be("32, male");
-        savedGoal.StartDate.Should().Be(GoalAggregate.CalculateStartDate(DateTime.Now));
+        savedGoal.StartDate.Should().Be(SampleChosenStartDate);
         savedGoal.StartDate.DayOfWeek.Should().Be(DayOfWeek.Monday);
     }
 
@@ -145,5 +148,32 @@ public sealed class FinalizeGoalCommandHandlerTests
     {
         // No command is dispatched — goal repository must never be called
         await _goals.DidNotReceive().AddAsync(Arg.Any<GoalAggregate>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ValidFlow_UsesChosenStartDateFromSession()
+    {
+        var chosenStart = new DateTime(2026, 7, 6); // Monday
+        var session     = OnboardingSession.Create();
+        session.UpdateDraft("Run a marathon in 6 months");
+        session.AdvanceToStep1();
+        session.AdvanceToRefinementQuestionsActive(
+            JsonSerializer.Serialize(SampleDto),
+            JsonSerializer.Serialize(SampleQuestions));
+        session.SetChosenStartDate(chosenStart);
+
+        var profile = UserProfileEntity.Create();
+        _onboarding.GetActiveSessionAsync(Arg.Any<CancellationToken>()).Returns(session);
+        _onboarding.UpsertAsync(Arg.Any<OnboardingSession>(), Arg.Any<CancellationToken>())
+                   .Returns(x => x.Arg<OnboardingSession>());
+        _userProfiles.GetSingleAsync(Arg.Any<CancellationToken>()).Returns(profile);
+
+        GoalAggregate? savedGoal = null;
+        await _goals.AddAsync(Arg.Do<GoalAggregate>(g => savedGoal = g), Arg.Any<CancellationToken>());
+
+        await _handler.Handle(new FinalizeGoalCommand(SampleAnswers), default);
+
+        savedGoal.Should().NotBeNull();
+        savedGoal!.StartDate.Should().Be(chosenStart);
     }
 }

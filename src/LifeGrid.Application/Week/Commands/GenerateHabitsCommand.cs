@@ -45,6 +45,9 @@ public sealed class GenerateHabitsCommandHandler(
         if (goal is null)
             return Result<HabitGenerationOutcome>.Failure("No goal found for the current user.");
 
+        if (session.ChosenStartDate is null)
+            return Result<HabitGenerationOutcome>.Failure("No chosen start date found in session.");
+
         var activeGoalCount = await goalRepository.GetActiveCountAsync(userProfile.UserId, cancellationToken);
         var isFirstGoal     = activeGoalCount == 1;
 
@@ -52,6 +55,7 @@ public sealed class GenerateHabitsCommandHandler(
             goal.Description,
             goal.DeadlineDate.ToString("yyyy-MM-dd"),
             BuildBaselineAnswersJson(goal),
+            session.ChosenStartDate.Value,
             cancellationToken);
 
         if (!serviceResult.IsSuccess)

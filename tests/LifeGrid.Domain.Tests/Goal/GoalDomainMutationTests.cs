@@ -18,6 +18,7 @@ public sealed class GoalDomainMutationTests
             ambientTag:   "Test",
             duration:     $"{durationDays} days",
             deadlineDate: deadline,
+            startDate:    MondayStart,
             creationDate: MondayStart);
     }
 

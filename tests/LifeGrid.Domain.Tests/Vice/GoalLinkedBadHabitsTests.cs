@@ -12,6 +12,7 @@ public sealed class GoalLinkedBadHabitsTests
             ambientTag:   "Fitness",
             duration:     "6 months",
             deadlineDate: DateTime.UtcNow.AddMonths(6),
+            startDate:    GoalAggregate.CalculateStartDate(DateTime.Now),
             creationDate: DateTime.Now);
 
     [Fact]

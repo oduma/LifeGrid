@@ -25,15 +25,17 @@ public sealed class TriggerGoalValidationCommandHandlerTests
         return s;
     }
 
+    private static readonly DateTime SampleStartDate = new(2026, 6, 22);
+
     [Fact]
     public async Task NoSession_ReturnsFailure()
     {
         _repository.GetActiveSessionAsync(Arg.Any<CancellationToken>()).Returns((OnboardingSession?)null);
 
-        var result = await _handler.Handle(new TriggerGoalValidationCommand(), default);
+        var result = await _handler.Handle(new TriggerGoalValidationCommand(SampleStartDate), default);
 
         result.IsSuccess.Should().BeFalse();
-        await _gemini.DidNotReceive().ValidateGoalAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _gemini.DidNotReceive().ValidateGoalAsync(Arg.Any<string>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -42,10 +44,10 @@ public sealed class TriggerGoalValidationCommandHandlerTests
         var session = OnboardingSession.Create();
         _repository.GetActiveSessionAsync(Arg.Any<CancellationToken>()).Returns(session);
 
-        var result = await _handler.Handle(new TriggerGoalValidationCommand(), default);
+        var result = await _handler.Handle(new TriggerGoalValidationCommand(SampleStartDate), default);
 
         result.IsSuccess.Should().BeFalse();
-        await _gemini.DidNotReceive().ValidateGoalAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _gemini.DidNotReceive().ValidateGoalAsync(Arg.Any<string>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -55,11 +57,11 @@ public sealed class TriggerGoalValidationCommandHandlerTests
         _repository.GetActiveSessionAsync(Arg.Any<CancellationToken>()).Returns(session);
         _repository.UpsertAsync(Arg.Any<OnboardingSession>(), Arg.Any<CancellationToken>())
                    .Returns(x => x.Arg<OnboardingSession>());
-        _gemini.ValidateGoalAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+        _gemini.ValidateGoalAsync(Arg.Any<string>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
                .Returns(Result<GeminiValidationResult>.Success(
                    new GeminiValidationResult.Invalid("Please add a deadline.")));
 
-        var result = await _handler.Handle(new TriggerGoalValidationCommand(), default);
+        var result = await _handler.Handle(new TriggerGoalValidationCommand(SampleStartDate), default);
 
         result.IsSuccess.Should().BeFalse();
         result.Error.Should().Be("Please add a deadline.");
@@ -74,10 +76,10 @@ public sealed class TriggerGoalValidationCommandHandlerTests
         _repository.GetActiveSessionAsync(Arg.Any<CancellationToken>()).Returns(session);
         _repository.UpsertAsync(Arg.Any<OnboardingSession>(), Arg.Any<CancellationToken>())
                    .Returns(x => x.Arg<OnboardingSession>());
-        _gemini.ValidateGoalAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+        _gemini.ValidateGoalAsync(Arg.Any<string>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
                .Returns(Result<GeminiValidationResult>.Failure("API error."));
 
-        var result = await _handler.Handle(new TriggerGoalValidationCommand(), default);
+        var result = await _handler.Handle(new TriggerGoalValidationCommand(SampleStartDate), default);
 
         result.IsSuccess.Should().BeFalse();
         session.CurrentStep.Should().Be(OnboardingStep.Step1_GoalDraftCaptured);
@@ -93,12 +95,12 @@ public sealed class TriggerGoalValidationCommandHandlerTests
 
         var validDto = new ValidatedGoalDto("Run a marathon", "6 months",
             new DateTime(2026, 12, 10, 0, 0, 0, DateTimeKind.Utc), "Physical");
-        _gemini.ValidateGoalAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+        _gemini.ValidateGoalAsync(Arg.Any<string>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
                .Returns(Result<GeminiValidationResult>.Success(new GeminiValidationResult.Valid(validDto)));
         _gemini.GenerateRefinementQuestionsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
                .Returns(Result<IReadOnlyList<RefinementQuestionDto>>.Failure("Prompt2 failed."));
 
-        var result = await _handler.Handle(new TriggerGoalValidationCommand(), default);
+        var result = await _handler.Handle(new TriggerGoalValidationCommand(SampleStartDate), default);
 
         result.IsSuccess.Should().BeFalse();
         session.CurrentStep.Should().Be(OnboardingStep.Step1_GoalDraftCaptured);
@@ -119,12 +121,12 @@ public sealed class TriggerGoalValidationCommandHandlerTests
             new(1, "What is your age and gender?"),
             new(2, "What is your current running baseline?")
         };
-        _gemini.ValidateGoalAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+        _gemini.ValidateGoalAsync(Arg.Any<string>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
                .Returns(Result<GeminiValidationResult>.Success(new GeminiValidationResult.Valid(validDto)));
         _gemini.GenerateRefinementQuestionsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
                .Returns(Result<IReadOnlyList<RefinementQuestionDto>>.Success(questions));
 
-        var result = await _handler.Handle(new TriggerGoalValidationCommand(), default);
+        var result = await _handler.Handle(new TriggerGoalValidationCommand(SampleStartDate), default);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.Should().HaveCount(2);
@@ -145,13 +147,58 @@ public sealed class TriggerGoalValidationCommandHandlerTests
         var validDto = new ValidatedGoalDto("Learn Spanish", "1 year",
             new DateTime(2027, 6, 10, 0, 0, 0, DateTimeKind.Utc), "Intellectual");
         var questions = new List<RefinementQuestionDto> { new(1, "Current level?") };
-        _gemini.ValidateGoalAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+        _gemini.ValidateGoalAsync(Arg.Any<string>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
                .Returns(Result<GeminiValidationResult>.Success(new GeminiValidationResult.Valid(validDto)));
         _gemini.GenerateRefinementQuestionsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
                .Returns(Result<IReadOnlyList<RefinementQuestionDto>>.Success(questions));
 
-        await _handler.Handle(new TriggerGoalValidationCommand(), default);
+        await _handler.Handle(new TriggerGoalValidationCommand(SampleStartDate), default);
 
         await _repository.Received(2).UpsertAsync(Arg.Any<OnboardingSession>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ValidGoal_StoresChosenStartDateInSession()
+    {
+        var chosenDate = new DateTime(2026, 6, 29); // Monday
+        var session    = SessionWithDraft("Run a marathon in 6 months");
+        _repository.GetActiveSessionAsync(Arg.Any<CancellationToken>()).Returns(session);
+        _repository.UpsertAsync(Arg.Any<OnboardingSession>(), Arg.Any<CancellationToken>())
+                   .Returns(x => x.Arg<OnboardingSession>());
+
+        var validDto  = new ValidatedGoalDto("Run a marathon", "6 months",
+            new DateTime(2026, 12, 10, 0, 0, 0, DateTimeKind.Utc), "Physical");
+        var questions = new List<RefinementQuestionDto> { new(1, "Your baseline?") };
+        _gemini.ValidateGoalAsync(Arg.Any<string>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+               .Returns(Result<GeminiValidationResult>.Success(new GeminiValidationResult.Valid(validDto)));
+        _gemini.GenerateRefinementQuestionsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+               .Returns(Result<IReadOnlyList<RefinementQuestionDto>>.Success(questions));
+
+        await _handler.Handle(new TriggerGoalValidationCommand(chosenDate), default);
+
+        session.ChosenStartDate.Should().Be(chosenDate);
+    }
+
+    [Fact]
+    public async Task ValidGoal_PassesStartDateToGeminiService()
+    {
+        var chosenDate = new DateTime(2026, 7, 6); // Monday
+        var session    = SessionWithDraft("Run a marathon in 6 months");
+        _repository.GetActiveSessionAsync(Arg.Any<CancellationToken>()).Returns(session);
+        _repository.UpsertAsync(Arg.Any<OnboardingSession>(), Arg.Any<CancellationToken>())
+                   .Returns(x => x.Arg<OnboardingSession>());
+
+        var validDto  = new ValidatedGoalDto("Run a marathon", "6 months",
+            new DateTime(2026, 12, 10, 0, 0, 0, DateTimeKind.Utc), "Physical");
+        var questions = new List<RefinementQuestionDto> { new(1, "Your baseline?") };
+        _gemini.ValidateGoalAsync(Arg.Any<string>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+               .Returns(Result<GeminiValidationResult>.Success(new GeminiValidationResult.Valid(validDto)));
+        _gemini.GenerateRefinementQuestionsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+               .Returns(Result<IReadOnlyList<RefinementQuestionDto>>.Success(questions));
+
+        await _handler.Handle(new TriggerGoalValidationCommand(chosenDate), default);
+
+        await _gemini.Received(1).ValidateGoalAsync(
+            Arg.Any<string>(), chosenDate, Arg.Any<CancellationToken>());
     }
 }

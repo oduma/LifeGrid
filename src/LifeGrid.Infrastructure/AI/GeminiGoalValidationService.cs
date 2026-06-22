@@ -21,11 +21,13 @@ internal sealed class GeminiGoalValidationService(IChatClient chatClient)
 
     public async Task<Result<GeminiValidationResult>> ValidateGoalAsync(
         string            rawDraft,
+        DateTime          chosenStartDate,
         CancellationToken ct = default)
     {
-        var today  = DateTime.UtcNow.ToString("MMMM d, yyyy");
-        var prompt = $"[Current date: {today}]\n\n" +
-                     Prompt1Template.Replace("${USER_INPUT_TEXT}", rawDraft);
+        var startDateStr = chosenStartDate.ToString("MMMM d, yyyy");
+        var prompt = Prompt1Template
+            .Replace("${USER_INPUT_TEXT}", rawDraft)
+            .Replace("${START_DATE}", startDateStr);
 
         string responseText;
         try

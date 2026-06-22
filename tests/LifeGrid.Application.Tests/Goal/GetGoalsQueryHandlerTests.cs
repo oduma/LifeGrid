@@ -49,7 +49,7 @@ public sealed class GetGoalsQueryHandlerTests
     {
         var profile = UserProfileEntity.Create();
         var goal    = GoalAggregate.Create(profile.UserId, "Run a marathon", "#Fitness", "6 months",
-            new DateTime(2027, 1, 1), DateTime.Now);
+            new DateTime(2027, 1, 1), GoalAggregate.CalculateStartDate(DateTime.Now), DateTime.Now);
 
         _profileRepo.GetSingleAsync(Arg.Any<CancellationToken>()).Returns(profile);
         _goalRepo.GetAllByUserIdAsync(profile.UserId, Arg.Any<CancellationToken>())
@@ -70,7 +70,7 @@ public sealed class GetGoalsQueryHandlerTests
         var profile  = UserProfileEntity.Create();
         var deadline = new DateTime(2027, 6, 1);
         var goal     = GoalAggregate.Create(profile.UserId, "Learn Spanish", "#Language", "12 months",
-            deadline, DateTime.Now);
+            deadline, GoalAggregate.CalculateStartDate(DateTime.Now), DateTime.Now);
 
         _profileRepo.GetSingleAsync(Arg.Any<CancellationToken>()).Returns(profile);
         _goalRepo.GetAllByUserIdAsync(profile.UserId, Arg.Any<CancellationToken>())

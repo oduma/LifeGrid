@@ -12,6 +12,7 @@ public sealed class Goal
         string ambientTag,
         string duration,
         DateTime deadlineDate,
+        DateTime startDate,
         DateTime creationDate) => new()
     {
         GoalId       = Guid.NewGuid(),
@@ -20,7 +21,8 @@ public sealed class Goal
         AmbientTag   = ambientTag,
         Duration     = duration,
         DeadlineDate = deadlineDate,
-        StartDate    = CalculateStartDate(creationDate),
+        StartDate    = startDate,
+        CreationDate = creationDate,
         Status       = GoalStatus.Active
     };
 
@@ -37,6 +39,7 @@ public sealed class Goal
     public string     AmbientTag   { get; private set; } = string.Empty;
     public string     Duration     { get; private set; } = string.Empty;
     public DateTime   StartDate    { get; private set; }
+    public DateTime   CreationDate { get; private set; }
     public DateTime   DeadlineDate { get; private set; }
     public GoalStatus Status       { get; private set; }
     public IReadOnlyCollection<LinkedBadHabit>       LinkedBadHabits   => _linkedBadHabits.AsReadOnly();

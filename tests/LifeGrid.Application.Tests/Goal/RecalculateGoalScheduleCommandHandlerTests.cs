@@ -33,7 +33,7 @@ public sealed class RecalculateGoalScheduleCommandHandlerTests
     {
         var goal = GoalAggregate.Create(
             userId, "Test goal", "#Test", $"{durationDays} days",
-            MondayStart.AddDays(durationDays), MondayStart);
+            MondayStart.AddDays(durationDays), MondayStart, MondayStart);
         goal.SetRefinementAnswers(new[] { (1, "Baseline question?", (string?)"My answer") });
         return goal;
     }
@@ -62,7 +62,7 @@ public sealed class RecalculateGoalScheduleCommandHandlerTests
                      goal.GoalId, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
                  .Returns(futureWgs);
         _aiService.GenerateScheduleAsync(
-                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
             .Returns(Result<HabitSchedulingResult>.Success(aiResult));
         _weekRepo.GetMaxWeekGoalNumberAsync(goal.GoalId, Arg.Any<CancellationToken>())
                  .Returns(maxWeekGoalNum);

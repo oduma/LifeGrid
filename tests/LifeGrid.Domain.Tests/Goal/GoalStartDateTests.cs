@@ -52,39 +52,28 @@ public sealed class GoalStartDateTests
     // ── Goal.Create stores StartDate ──────────────────────────────────────────
 
     [Fact]
-    public void Create_SetsStartDateToComputedMonday()
+    public void Create_WithExplicitStartDate_StoresItDirectly()
     {
-        var thursday     = new DateTime(2026, 6, 18); // Thursday → next Monday is 2026-06-22
-        var expectedDate = new DateTime(2026, 6, 22);
+        var startDate    = new DateTime(2026, 6, 29); // Monday
+        var creationDate = new DateTime(2026, 6, 25); // Thursday
 
         var goal = GoalAggregate.Create(
             Guid.NewGuid(), "Run a marathon", "Fitness", "6 months",
-            new DateTime(2027, 1, 1), thursday);
+            new DateTime(2027, 1, 1), startDate, creationDate);
 
-        goal.StartDate.Should().Be(expectedDate);
+        goal.StartDate.Should().Be(startDate);
     }
 
     [Fact]
-    public void Create_WhenCreatedOnMonday_StartDateEqualsCreationDate()
+    public void Create_StoresCreationDate()
     {
-        var monday = new DateTime(2026, 6, 15); // 2026-06-15 is a Monday
+        var startDate    = new DateTime(2026, 6, 22); // Monday
+        var creationDate = new DateTime(2026, 6, 19); // Friday
 
         var goal = GoalAggregate.Create(
             Guid.NewGuid(), "Run a marathon", "Fitness", "6 months",
-            new DateTime(2027, 1, 1), monday);
+            new DateTime(2027, 1, 1), startDate, creationDate);
 
-        goal.StartDate.Should().Be(monday);
-    }
-
-    [Fact]
-    public void Create_StartDateDayOfWeek_IsAlwaysMonday()
-    {
-        var friday = new DateTime(2026, 6, 19); // Friday
-
-        var goal = GoalAggregate.Create(
-            Guid.NewGuid(), "Run a marathon", "Fitness", "6 months",
-            new DateTime(2027, 1, 1), friday);
-
-        goal.StartDate.DayOfWeek.Should().Be(DayOfWeek.Monday);
+        goal.CreationDate.Should().Be(creationDate);
     }
 }

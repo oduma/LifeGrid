@@ -59,4 +59,10 @@ internal sealed class WeekRepository(LifeGridDbContext db) : IWeekRepository
         => db.WeekGoals
              .Where(wg => wg.GoalId == goalId)
              .SumAsync(wg => wg.GoalWeeklyXpEarned, ct);
+
+    public async Task<IReadOnlyList<WeekEntity>> GetTimelineAsync(CancellationToken ct = default)
+        => await db.Weeks
+                   .Include(w => w.WeekGoals)
+                   .OrderBy(w => w.StartDate)
+                   .ToListAsync(ct);
 }

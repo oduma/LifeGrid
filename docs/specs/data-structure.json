@@ -30,7 +30,8 @@
     "Description": "String",
     "Ambient_Tag": "String",
     "Duration": "String // Textual representation (e.g., '6 months')",
-    "Start_Date": "DateTime // Phase 10: system-calculated; first Monday on or after the Goal creation date",
+    "Creation_Date": "DateTime // Phase 14: audit timestamp set at Goal creation time; uses CURRENT_TIMESTAMP default for legacy rows",
+    "Start_Date": "DateTime // Phase 14: user-chosen Monday (first Monday of or after the goal's start week); stored directly, not calculated",
     "Deadline_Date": "DateTime",
     "Status": "String (Active, Overwhelmed, Abandoned, Completed)",
     "Linked_Bad_Habits": [
@@ -59,7 +60,8 @@
     "Last_Active_Timestamp": "DateTime",
     "Validated_Goal_Json": "String? // Phase 5 staging: raw JSON returned by Gemini prompt1; cleared to NULL after Goal is committed",
     "Refinement_Questions_Json": "String? // Phase 5 staging: raw JSON array returned by Gemini prompt2; cleared to NULL after Goal is committed",
-    "Refinement_Answers_Json": "String? // Phase 6 bug-fix: persists user's typed refinement answers across process restarts; cleared to NULL after Goal is committed"
+    "Refinement_Answers_Json": "String? // Phase 6 bug-fix: persists user's typed refinement answers across process restarts; cleared to NULL after Goal is committed",
+    "Chosen_Start_Date": "DateTime? // Phase 14: the Monday chosen by the user in the date picker; cached here so FinalizeGoal and GenerateHabits can use it without re-prompting"
   },
 
   "Week": {

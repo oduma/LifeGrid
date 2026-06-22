@@ -31,8 +31,8 @@ public sealed class GetViceSurveyQuestionsQueryTests
     public async Task CallsGeminiWithAllGoalDescriptions()
     {
         var profile = UserProfileEntity.Create();
-        var goal1   = GoalAggregate.Create(profile.UserId, "Run a marathon",  "Fitness",  "6 months",  DateTime.UtcNow.AddMonths(6),  DateTime.Now);
-        var goal2   = GoalAggregate.Create(profile.UserId, "Learn Spanish",   "Language", "12 months", DateTime.UtcNow.AddMonths(12), DateTime.Now);
+        var goal1   = GoalAggregate.Create(profile.UserId, "Run a marathon",  "Fitness",  "6 months",  DateTime.UtcNow.AddMonths(6),  GoalAggregate.CalculateStartDate(DateTime.Now), DateTime.Now);
+        var goal2   = GoalAggregate.Create(profile.UserId, "Learn Spanish",   "Language", "12 months", DateTime.UtcNow.AddMonths(12), GoalAggregate.CalculateStartDate(DateTime.Now), DateTime.Now);
 
         _userProfiles.GetSingleAsync(Arg.Any<CancellationToken>()).Returns(profile);
         _goals.GetAllByUserIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())

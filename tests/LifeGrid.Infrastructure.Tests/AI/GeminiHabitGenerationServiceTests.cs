@@ -74,7 +74,7 @@ public sealed class GeminiHabitGenerationServiceTests
         ArrangeSequentialResponses(FeasibleBlueprint, WeekScheduleJson);
 
         var result = await _service.GenerateScheduleAsync(
-            "Run a marathon", "2026-12-10", "[]");
+            "Run a marathon", "2026-12-10", "[]", new DateTime(2026, 6, 22));
 
         result.IsSuccess.Should().BeTrue();
         result.Value.Should().BeOfType<HabitSchedulingResult.Feasible>();
@@ -111,7 +111,7 @@ public sealed class GeminiHabitGenerationServiceTests
             .Returns(new ChatResponse(new ChatMessage(ChatRole.Assistant, infeasibleBlueprint)));
 
         var result = await _service.GenerateScheduleAsync(
-            "Run a marathon", "2026-06-30", "[]");
+            "Run a marathon", "2026-06-30", "[]", new DateTime(2026, 6, 22));
 
         result.IsSuccess.Should().BeTrue();
         result.Value.Should().BeOfType<HabitSchedulingResult.Infeasible>();
@@ -149,7 +149,7 @@ public sealed class GeminiHabitGenerationServiceTests
                 return new ChatResponse(new ChatMessage(ChatRole.Assistant, text));
             });
 
-        await _service.GenerateScheduleAsync("goal", "2026-12-10", "[]");
+        await _service.GenerateScheduleAsync("goal", "2026-12-10", "[]", new DateTime(2026, 6, 22));
 
         secondCallMessages.Should().NotBeNull();
         var promptText = secondCallMessages!.Single().Text;
@@ -169,7 +169,7 @@ public sealed class GeminiHabitGenerationServiceTests
                 Arg.Any<CancellationToken>())
             .Returns(new ChatResponse(new ChatMessage(ChatRole.Assistant, "not valid json {{{}")));
 
-        var result = await _service.GenerateScheduleAsync("goal", "2026-12-10", "[]");
+        var result = await _service.GenerateScheduleAsync("goal", "2026-12-10", "[]", new DateTime(2026, 6, 22));
 
         result.IsSuccess.Should().BeFalse();
         result.Error.Should().NotBeNullOrEmpty();
@@ -180,7 +180,7 @@ public sealed class GeminiHabitGenerationServiceTests
     {
         ArrangeSequentialResponses(FeasibleBlueprint, "not valid json {{{");
 
-        var result = await _service.GenerateScheduleAsync("goal", "2026-12-10", "[]");
+        var result = await _service.GenerateScheduleAsync("goal", "2026-12-10", "[]", new DateTime(2026, 6, 22));
 
         result.IsSuccess.Should().BeFalse();
         result.Error.Should().NotBeNullOrEmpty();
@@ -198,7 +198,7 @@ public sealed class GeminiHabitGenerationServiceTests
 
         ArrangeFirstCallThrows(ex);
 
-        var result = await _service.GenerateScheduleAsync("goal", "2026-12-10", "[]");
+        var result = await _service.GenerateScheduleAsync("goal", "2026-12-10", "[]", new DateTime(2026, 6, 22));
 
         result.IsSuccess.Should().BeFalse();
         result.Error.Should().Contain("rate limit");

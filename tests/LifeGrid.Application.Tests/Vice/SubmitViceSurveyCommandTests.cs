@@ -75,7 +75,7 @@ public sealed class SubmitViceSurveyCommandTests
     {
         var profile = UserProfileEntity.Create();
         var goal    = GoalAggregate.Create(profile.UserId, "Run a marathon", "Fitness", "6 months",
-                          DateTime.UtcNow.AddMonths(6), DateTime.Now);
+                          DateTime.UtcNow.AddMonths(6), GoalAggregate.CalculateStartDate(DateTime.Now), DateTime.Now);
 
         _userProfiles.GetSingleAsync(Arg.Any<CancellationToken>()).Returns(profile);
         _goals.GetAllByUserIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
@@ -97,7 +97,7 @@ public sealed class SubmitViceSurveyCommandTests
     {
         var profile = UserProfileEntity.Create();
         var goal    = GoalAggregate.Create(profile.UserId, "Run a marathon", "Fitness", "6 months",
-                          DateTime.UtcNow.AddMonths(6), DateTime.Now);
+                          DateTime.UtcNow.AddMonths(6), GoalAggregate.CalculateStartDate(DateTime.Now), DateTime.Now);
         var vices   = new List<DetectedViceDto>
         {
             new("Late-night scrolling", 3, "Run a marathon"),
@@ -117,7 +117,7 @@ public sealed class SubmitViceSurveyCommandTests
     {
         var profile = UserProfileEntity.Create();
         var goal    = GoalAggregate.Create(profile.UserId, "Run a marathon", "Fitness", "6 months",
-                          DateTime.UtcNow.AddMonths(6), DateTime.Now);
+                          DateTime.UtcNow.AddMonths(6), GoalAggregate.CalculateStartDate(DateTime.Now), DateTime.Now);
         ArrangeHappyPath(profile, goal, new List<DetectedViceDto>
         {
             new("Doomscrolling", 2, "Run a marathon")
@@ -135,7 +135,7 @@ public sealed class SubmitViceSurveyCommandTests
     {
         var profile = UserProfileEntity.Create();
         var goal    = GoalAggregate.Create(profile.UserId, "Run a marathon", "Fitness", "6 months",
-                          DateTime.UtcNow.AddMonths(6), DateTime.Now);
+                          DateTime.UtcNow.AddMonths(6), GoalAggregate.CalculateStartDate(DateTime.Now), DateTime.Now);
         ArrangeHappyPath(profile, goal, new List<DetectedViceDto>
         {
             new("Snacking", 1, "Run a marathon")
@@ -151,7 +151,7 @@ public sealed class SubmitViceSurveyCommandTests
     {
         var profile = UserProfileEntity.Create();
         var goal    = GoalAggregate.Create(profile.UserId, "Run a marathon", "Fitness", "6 months",
-                          DateTime.UtcNow.AddMonths(6), DateTime.Now);
+                          DateTime.UtcNow.AddMonths(6), GoalAggregate.CalculateStartDate(DateTime.Now), DateTime.Now);
         var vices   = new List<DetectedViceDto>
         {
             new("Vice A", 2, "Run a marathon"),
@@ -170,7 +170,7 @@ public sealed class SubmitViceSurveyCommandTests
     {
         var profile = UserProfileEntity.Create();
         var goal    = GoalAggregate.Create(profile.UserId, "Run a marathon", "Fitness", "6 months",
-                          DateTime.UtcNow.AddMonths(6), DateTime.Now);
+                          DateTime.UtcNow.AddMonths(6), GoalAggregate.CalculateStartDate(DateTime.Now), DateTime.Now);
         // AI returns vice for a different goal description — no match
         ArrangeHappyPath(profile, goal, new List<DetectedViceDto>
         {

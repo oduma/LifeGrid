@@ -34,6 +34,8 @@ public sealed class GenerateHabitsCommandTests
 
     // ── helpers ──────────────────────────────────────────────────────────────
 
+    private static readonly DateTime SampleChosenStartDate = new(2026, 6, 22);
+
     private static OnboardingSession SessionAtExecutionVerified()
     {
         var s = OnboardingSession.Create();
@@ -41,6 +43,7 @@ public sealed class GenerateHabitsCommandTests
         s.AdvanceToStep1();
         s.AdvanceToRefinementQuestionsActive("{}", "[]");
         s.AdvanceToExecutionVerified();
+        s.SetChosenStartDate(SampleChosenStartDate);
         return s;
     }
 
@@ -49,7 +52,8 @@ public sealed class GenerateHabitsCommandTests
         var goal = GoalAggregate.Create(
             userId, "Run a marathon", "Physical", "6 months",
             new DateTime(2026, 12, 10, 0, 0, 0, DateTimeKind.Utc),
-            new DateTime(2026, 6, 16)); // Tuesday — StartDate = 2026-06-22 (next Monday)
+            new DateTime(2026, 6, 22),  // Monday startDate (user-chosen)
+            new DateTime(2026, 6, 16)); // Tuesday creationDate
         goal.SetRefinementAnswers(new[] { (1, "What is your baseline?", (string?)"5k comfortable") });
         return goal;
     }
@@ -117,7 +121,7 @@ public sealed class GenerateHabitsCommandTests
 
         result.IsSuccess.Should().BeFalse();
         await _aiService.DidNotReceive().GenerateScheduleAsync(
-            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>());
     }
 
     // ── infeasibility path ────────────────────────────────────────────────────
@@ -133,7 +137,7 @@ public sealed class GenerateHabitsCommandTests
         _userProfiles.GetSingleAsync(Arg.Any<CancellationToken>()).Returns(profile);
         _goals.GetByUserIdAsync(profile.UserId, Arg.Any<CancellationToken>()).Returns(goal);
         _aiService.GenerateScheduleAsync(
-                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
             .Returns(Result<HabitSchedulingResult>.Success(
                 new HabitSchedulingResult.Infeasible("Too aggressive", "2027-06-01", null)));
 
@@ -163,7 +167,7 @@ public sealed class GenerateHabitsCommandTests
         _userProfiles.GetSingleAsync(Arg.Any<CancellationToken>()).Returns(profile);
         _goals.GetByUserIdAsync(profile.UserId, Arg.Any<CancellationToken>()).Returns(goal);
         _aiService.GenerateScheduleAsync(
-                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
             .Returns(Result<HabitSchedulingResult>.Failure("Gemini rate limit reached."));
 
         var result = await _handler.Handle(new GenerateHabitsCommand(), default);
@@ -249,7 +253,7 @@ public sealed class GenerateHabitsCommandTests
         _goals.GetByUserIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(goal);
         _goals.GetActiveCountAsync(profile.UserId, Arg.Any<CancellationToken>()).Returns(1);
         _aiService.GenerateScheduleAsync(
-                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
             .Returns(Result<HabitSchedulingResult>.Success(FeasibleResult));
 
         await _handler.Handle(new GenerateHabitsCommand(), default);
@@ -271,7 +275,7 @@ public sealed class GenerateHabitsCommandTests
         _goals.GetByUserIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(goal);
         _goals.GetActiveCountAsync(profile.UserId, Arg.Any<CancellationToken>()).Returns(2);
         _aiService.GenerateScheduleAsync(
-                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
             .Returns(Result<HabitSchedulingResult>.Success(FeasibleResult));
 
         await _handler.Handle(new GenerateHabitsCommand(), default);
@@ -298,7 +302,7 @@ public sealed class GenerateHabitsCommandTests
         _userProfiles.GetSingleAsync(Arg.Any<CancellationToken>()).Returns(profile);
         _goals.GetByUserIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(goal);
         _aiService.GenerateScheduleAsync(
-                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
             .Returns(Result<HabitSchedulingResult>.Success(FeasibleResult));
 
         await _handler.Handle(new GenerateHabitsCommand(), default);
@@ -324,7 +328,7 @@ public sealed class GenerateHabitsCommandTests
         _userProfiles.GetSingleAsync(Arg.Any<CancellationToken>()).Returns(profile);
         _goals.GetByUserIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(goal);
         _aiService.GenerateScheduleAsync(
-                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
             .Returns(Result<HabitSchedulingResult>.Success(FeasibleResult));
         await _weekRepo.AddAsync(
             Arg.Any<WeekEntity>(),
@@ -335,6 +339,37 @@ public sealed class GenerateHabitsCommandTests
 
         capturedWeekGoal.Should().NotBeNull();
         capturedWeekGoal!.WeekGoalNumber.Should().Be(1);
+    }
+
+    // ── start date forwarding ─────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GenerateSchedule_PassesChosenStartDateFromSession()
+    {
+        var chosenStart = new DateTime(2026, 7, 6); // Monday
+        var session     = OnboardingSession.Create();
+        session.UpdateDraft("Run a marathon in 6 months");
+        session.AdvanceToStep1();
+        session.AdvanceToRefinementQuestionsActive("{}", "[]");
+        session.AdvanceToExecutionVerified();
+        session.SetChosenStartDate(chosenStart);
+
+        var profile = UserProfileEntity.Create();
+        var goal    = SampleGoal(profile.UserId);
+
+        _onboarding.GetActiveSessionAsync(Arg.Any<CancellationToken>()).Returns(session);
+        _onboarding.UpsertAsync(Arg.Any<OnboardingSession>(), Arg.Any<CancellationToken>())
+                   .Returns(x => x.Arg<OnboardingSession>());
+        _userProfiles.GetSingleAsync(Arg.Any<CancellationToken>()).Returns(profile);
+        _goals.GetByUserIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(goal);
+        _aiService.GenerateScheduleAsync(
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns(Result<HabitSchedulingResult>.Success(FeasibleResult));
+
+        await _handler.Handle(new GenerateHabitsCommand(), default);
+
+        await _aiService.Received(1).GenerateScheduleAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), chosenStart, Arg.Any<CancellationToken>());
     }
 
     // ── wiring helper ─────────────────────────────────────────────────────────
@@ -354,7 +389,7 @@ public sealed class GenerateHabitsCommandTests
         _userProfiles.GetSingleAsync(Arg.Any<CancellationToken>()).Returns(profile);
         _goals.GetByUserIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(goal);
         _aiService.GenerateScheduleAsync(
-                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
             .Returns(Result<HabitSchedulingResult>.Success(FeasibleResult));
     }
 }

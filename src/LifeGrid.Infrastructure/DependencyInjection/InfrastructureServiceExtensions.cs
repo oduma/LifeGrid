@@ -35,7 +35,16 @@ public static class InfrastructureServiceExtensions
         services.AddSingleton<IBuildSecretProvider, BuildSecretProvider>();
         services.AddTransient<IApiCredentialSyncService, ApiCredentialSyncService>();
 
-        services.AddSingleton<HttpClient>();
+        services.AddSingleton<HttpClient>(_ =>
+        {
+            var handler = new System.Net.Http.SocketsHttpHandler
+            {
+                KeepAlivePingPolicy  = System.Net.Http.HttpKeepAlivePingPolicy.WithActiveRequests,
+                KeepAlivePingDelay   = TimeSpan.FromSeconds(20),
+                KeepAlivePingTimeout = TimeSpan.FromSeconds(15),
+            };
+            return new HttpClient(handler) { Timeout = TimeSpan.FromMinutes(5) };
+        });
         services.AddTransient<IChatClient, GeminiHttpChatClient>();
         services.AddTransient<IGeminiGoalValidationService, GeminiGoalValidationService>();
         services.AddTransient<IGeminiHabitGenerationService, GeminiHabitGenerationService>();

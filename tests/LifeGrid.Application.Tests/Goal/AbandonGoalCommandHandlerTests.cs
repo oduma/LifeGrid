@@ -28,7 +28,7 @@ public sealed class AbandonGoalCommandHandlerTests
 
     private static GoalAggregate SampleGoal(Guid userId)
         => GoalAggregate.Create(userId, "Run a marathon", "#Fitness", "6 months",
-            MondayStart.AddDays(180), MondayStart);
+            MondayStart.AddDays(180), MondayStart, MondayStart);
 
     private void ArrangeBase(UserProfileEntity profile, GoalAggregate goal, int historicalXp = 0,
         IReadOnlyList<WeekGoalEntity>? futureWeekGoals = null)

@@ -25,5 +25,11 @@ public partial class CreateGoalPage : ContentPage
     {
         base.OnDisappearing();
         _shellVm.IsProfileActive = false;
+#if ANDROID
+        // Forces the focused EditText to relinquish focus while the DI scope is still live.
+        // Without this, a focused Entry fires onFocusChange during Activity.OnDestroy after
+        // the scope is disposed, causing a fatal ObjectDisposedException in InputView.MapIsFocused.
+        Microsoft.Maui.ApplicationModel.Platform.CurrentActivity?.CurrentFocus?.ClearFocus();
+#endif
     }
 }

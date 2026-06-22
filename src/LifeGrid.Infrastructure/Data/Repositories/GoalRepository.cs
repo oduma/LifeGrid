@@ -30,4 +30,10 @@ internal sealed class GoalRepository(LifeGridDbContext db) : IGoalRepository
         => db.Goals
              .Include(g => g.RefinementAnswers)
              .FirstOrDefaultAsync(g => g.GoalId == goalId, ct);
+
+    public async Task<IReadOnlyList<GoalAggregate>> GetByIdsAsync(
+        IReadOnlyList<Guid> goalIds, CancellationToken ct = default)
+        => await db.Goals
+                   .Where(g => goalIds.Contains(g.GoalId))
+                   .ToListAsync(ct);
 }

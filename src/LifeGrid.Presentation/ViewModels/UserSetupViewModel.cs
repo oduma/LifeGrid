@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using LifeGrid.Application.Goal;
+using LifeGrid.Application.UserProfile.Queries;
 using LifeGrid.Application.UserSetup.Commands;
 using LifeGrid.Application.Vice;
 using MediatR;
@@ -36,6 +37,9 @@ public partial class UserSetupViewModel(IMediator mediator, AppShellViewModel ap
     private async Task ResetGoalsAsync()
     {
         await mediator.Send(new FactoryResetCommand());
+        // Factory reset deletes UserProfiles; recreate immediately so downstream
+        // commands (FinalizeGoalCommand, GenerateHabitsCommand) never see null profile.
+        await mediator.Send(new GetOrCreateUserProfileQuery());
         appShellViewModel.IsOnboardingComplete = false;
         await Shell.Current.GoToAsync("create-goal");
     }

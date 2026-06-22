@@ -27,5 +27,6 @@ public sealed class OnboardingSessionConfiguration : IEntityTypeConfiguration<On
         builder.Property(e => e.ValidatedGoalJson);
         builder.Property(e => e.RefinementQuestionsJson);
         builder.Property(e => e.RefinementAnswersJson);
+        builder.Property(e => e.ChosenStartDate);
     }
 }

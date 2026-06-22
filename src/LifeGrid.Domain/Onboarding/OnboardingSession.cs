@@ -31,12 +31,15 @@ public sealed class OnboardingSession
         LastActiveTimestamp = DateTime.UtcNow;
     }
 
-    public Guid?   UserId                  { get; private set; }
-    public string? ValidatedGoalJson       { get; private set; }
-    public string? RefinementQuestionsJson { get; private set; }
-    public string? RefinementAnswersJson   { get; private set; }
+    public Guid?     UserId                  { get; private set; }
+    public string?   ValidatedGoalJson       { get; private set; }
+    public string?   RefinementQuestionsJson { get; private set; }
+    public string?   RefinementAnswersJson   { get; private set; }
+    public DateTime? ChosenStartDate         { get; private set; }
 
     public void LinkToUser(Guid userId) => UserId = userId;
+
+    public void SetChosenStartDate(DateTime startDate) => ChosenStartDate = startDate;
 
     public void AdvanceToAwaitingValidation()
     {
@@ -89,6 +92,7 @@ public sealed class OnboardingSession
         ValidatedGoalJson       = null;
         RefinementQuestionsJson = null;
         RefinementAnswersJson   = null;
+        ChosenStartDate         = null;
         LastActiveTimestamp     = DateTime.UtcNow;
     }
 }

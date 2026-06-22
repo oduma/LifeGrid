@@ -39,9 +39,9 @@ public sealed class WeekDeduplicationTests : IDisposable
         await _db.SaveChangesAsync();
 
         var goalA = Goal.Create(profile.UserId, "Run a marathon",  "Fitness",  "6 months",
-            new DateTime(2026, 12, 10, 0, 0, 0, DateTimeKind.Utc), new DateTime(2026, 6, 16));
+            new DateTime(2026, 12, 10, 0, 0, 0, DateTimeKind.Utc), new DateTime(2026, 6, 22), new DateTime(2026, 6, 16));
         var goalB = Goal.Create(profile.UserId, "Learn Spanish",   "Language", "12 months",
-            new DateTime(2027,  6, 10, 0, 0, 0, DateTimeKind.Utc), new DateTime(2026, 6, 16));
+            new DateTime(2027,  6, 10, 0, 0, 0, DateTimeKind.Utc), new DateTime(2026, 6, 22), new DateTime(2026, 6, 16));
 
         _db.Goals.AddRange(goalA, goalB);
         await _db.SaveChangesAsync();

@@ -44,7 +44,7 @@ public sealed class GoalSchemaTests : IDisposable
     {
         var profile  = await SeedUserProfileAsync();
         var deadline = new DateTime(2027, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-        var goal     = Goal.Create(profile.UserId, "Run a marathon", "Fitness", "6 months", deadline, DateTime.Now);
+        var goal     = Goal.Create(profile.UserId, "Run a marathon", "Fitness", "6 months", deadline, Goal.CalculateStartDate(DateTime.Now), DateTime.Now);
 
         _db.Goals.Add(goal);
         await _db.SaveChangesAsync();

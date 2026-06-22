@@ -13,6 +13,7 @@ public sealed class GoalRefinementAnswerTests
             ambientTag:   "Physical",
             duration:     "6 months",
             deadlineDate: new DateTime(2027, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            startDate:    GoalAggregate.CalculateStartDate(DateTime.Now),
             creationDate: DateTime.Now);
 
     [Fact]
