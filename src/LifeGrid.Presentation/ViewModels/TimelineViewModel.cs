@@ -3,7 +3,6 @@ using CommunityToolkit.Mvvm.Input;
 using LifeGrid.Application.Timeline;
 using MediatR;
 using System.Collections.ObjectModel;
-using GoalAggregate = LifeGrid.Domain.Goal.Goal;
 
 namespace LifeGrid.Presentation.ViewModels;
 
@@ -55,7 +54,9 @@ public partial class TimelineViewModel(IMediator mediator) : ObservableObject, I
         _currentWeekIndex = -1;
         _selectedWeek     = null;
 
-        var currentMonday = GoalAggregate.CalculateStartDate(DateTime.Today);
+        var today         = DateTime.Today;
+        int daysFromMon   = ((int)today.DayOfWeek - (int)DayOfWeek.Monday + 7) % 7;
+        var currentMonday = today.AddDays(-daysFromMon);
 
         foreach (var dto in result.Value!)
         {

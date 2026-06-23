@@ -1,0 +1,61 @@
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using LifeGrid.Application.Home;
+using MediatR;
+using System.Collections.ObjectModel;
+
+namespace LifeGrid.Presentation.ViewModels;
+
+public partial class HomeViewModel(IMediator mediator) : ObservableObject
+{
+    [ObservableProperty] private string  _weekHeaderText            = string.Empty;
+    [ObservableProperty] private string  _weekStatusText            = string.Empty;
+    [ObservableProperty] private bool    _isEmptyStateVisible;
+    [ObservableProperty] private bool    _isWeeklyDataVisible;
+    [ObservableProperty] private string? _proofImageUrl;
+    [ObservableProperty] private bool    _isProofImageOverlayVisible;
+
+    public ObservableCollection<WeeklyGoalGroupItem> GoalGroups { get; } = new();
+
+    public async Task LoadAsync()
+    {
+        var result  = await mediator.Send(new GetCurrentWeekHabitsQuery());
+        var hasData = result.IsSuccess && result.Value?.GoalGroups.Count > 0;
+
+        IsWeeklyDataVisible = hasData;
+        IsEmptyStateVisible = !hasData;
+
+        if (!hasData)
+        {
+            GoalGroups.Clear();
+            return;
+        }
+
+        var dto = result.Value!;
+        WeekHeaderText = $"Current Week — {dto.StartDate:MMM dd, yyyy}";
+        WeekStatusText = $"{dto.Status}  |  SP: {dto.TotalWeeklySpEarned}";
+
+        GoalGroups.Clear();
+        foreach (var g in dto.GoalGroups)
+            GoalGroups.Add(new WeeklyGoalGroupItem(g));
+    }
+
+    [RelayCommand]
+    private async Task NavigateToCreateGoalAsync()
+        => await Shell.Current.GoToAsync("create-goal");
+
+    [RelayCommand]
+    private void ShowProofImage(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return;
+        ProofImageUrl              = url;
+        IsProofImageOverlayVisible = true;
+    }
+
+    [RelayCommand]
+    private void DismissProofImage()
+    {
+        IsProofImageOverlayVisible = false;
+        ProofImageUrl              = null;
+    }
+}

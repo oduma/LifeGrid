@@ -22,6 +22,7 @@ public static class InfrastructureServiceExtensions
         this IServiceCollection services,
         string connectionString)
     {
+        services.AddSingleton<IDateTimeProvider, SystemDateTimeProvider>();
         services.AddDbContext<LifeGridDbContext>(opts =>
             opts.UseSqlite(connectionString));
         services.AddScoped<IOnboardingRepository, OnboardingRepository>();

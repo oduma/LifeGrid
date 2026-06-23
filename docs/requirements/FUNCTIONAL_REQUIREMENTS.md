@@ -3051,3 +3051,147 @@ The existing `SelectWeekCommand` (single-tap highlight) is preserved unchanged.
 | `GetWeeklyHabitsQueryHandler` accessibility | `internal sealed class` | Must be `public sealed class` — tests instantiate it directly (matches pattern of all other handlers in the project) |
 | Proof text visibility in XAML | `NullToBoolConverter.Instance` referenced in `WeeklyHabitsPage.xaml` | Converter doesn't exist in the project; replaced with computed `HasProofText` boolean property on `HabitCompletionLogItem`, bound `IsVisible` directly |
 | EF migration `--startup-project` | `src/LifeGrid.Presentation` | Must be `src/LifeGrid.Infrastructure` — MAUI Presentation project multi-targets `net10.0-android` and `ResolvePackageAssets` target is unavailable at design time; `LifeGridDbContextFactory` in Infrastructure satisfies the `IDesignTimeDbContextFactory` requirement |
+
+---
+
+## Phase 21: Home View — Current Week Active Dashboard
+
+### P21.1 — IDateTimeProvider (Application Layer)
+
+New interface `IDateTimeProvider` in `LifeGrid.Application.Common` (alongside `IUnitOfWork`):
+
+```csharp
+public interface IDateTimeProvider { DateTime UtcNow { get; } }
+```
+
+Infrastructure implementation `SystemDateTimeProvider` in `LifeGrid.Infrastructure/Data/Services/`, returning `DateTime.UtcNow`. Registered as `Singleton` in `InfrastructureServiceExtensions`.
+
+---
+
+### P21.2 — GetCurrentWeekHabitsQuery (Application Layer)
+
+New query record in namespace `LifeGrid.Application.Home`:
+
+```csharp
+public record GetCurrentWeekHabitsQuery : IRequest<Result<WeeklyHabitsDashboardDto>>;
+```
+
+No parameters — the handler resolves the current Monday internally via `IDateTimeProvider`.
+
+---
+
+### P21.3 — GetCurrentWeekHabitsQueryHandler (Application Layer)
+
+Handler injects `IWeekRepository`, `IGoalRepository`, `IHabitRepository`, `IDateTimeProvider`.
+
+**Preceding Monday calculation** (always the Monday on or before today):
+```csharp
+var today         = _dateTimeProvider.UtcNow.Date;
+int daysFromMon   = ((int)today.DayOfWeek - (int)DayOfWeek.Monday + 7) % 7;
+var currentMonday = today.AddDays(-daysFromMon);
+```
+
+- Monday → same day (0 days back)
+- Wednesday → 2 days back to Monday
+- Sunday → 6 days back to Monday
+
+Handler flow:
+1. Calculate `currentMonday` as above.
+2. Call `weekRepository.GetByStartDateAsync(currentMonday)`.
+3. If week not found → return `Result<WeeklyHabitsDashboardDto>.Failure("No active week found.")`.
+4. If found → execute the same nested aggregation as `GetWeeklyHabitsQueryHandler` with **no filter** (all goals):
+   - Get `weekGoals`, resolve `goals` via `GetByIdsAsync`, resolve `habits` via `GetByWeekGoalIdsAsync`.
+   - Assemble `WeeklyHabitsDashboardDto` with full `GoalGroups` list.
+5. Return `Result<WeeklyHabitsDashboardDto>.Success(dto)`.
+
+Aggregation logic is inlined (not delegated to the Phase 20 handler via MediatR) — small duplication is acceptable per KISS.
+
+---
+
+### P21.4 — HomeViewModel (Presentation Layer)
+
+New class `HomeViewModel(IMediator mediator) : ObservableObject` — **not** `IQueryAttributable` (root tab, no nav parameters).
+
+Observable properties:
+- `IsEmptyStateVisible : bool`
+- `IsWeeklyDataVisible : bool`
+- `WeekHeaderText : string`
+- `WeekStatusText : string`
+- `ProofImageUrl : string?`
+- `IsProofImageOverlayVisible : bool`
+
+Collection: `GoalGroups : ObservableCollection<WeeklyGoalGroupItem>`
+
+`LoadAsync()` logic:
+```
+send GetCurrentWeekHabitsQuery
+hasData = result.IsSuccess && result.Value!.GoalGroups.Count > 0
+IsWeeklyDataVisible = hasData
+IsEmptyStateVisible = !hasData
+if hasData: populate WeekHeaderText / WeekStatusText / GoalGroups
+```
+
+Commands:
+- `NavigateToCreateGoalCommand` → `Shell.Current.GoToAsync("create-goal")`
+- `ShowProofImageCommand(string? url)` / `DismissProofImageCommand()` — identical to `WeeklyHabitsViewModel`
+
+---
+
+### P21.5 — HomePage (Presentation Layer)
+
+`HomePage.xaml` replaces the existing placeholder with a full layout:
+
+**Grid layout** — 3 rows: `Auto` (Zone A), `*` (content area), `Auto` (AdBannerView)
+
+**Zone A — Week Header** (same Border/Grid structure as `WeeklyHabitsPage.xaml`):
+- Left label: `WeekHeaderText` (e.g. "Current Week — Jun 23, 2026")
+- Right label: `WeekStatusText` (e.g. "Active  |  SP: 42")
+
+**Zone B+C — Scrollable content** (`IsVisible="{Binding IsWeeklyDataVisible}"`):
+- Identical `BindableLayout` tree over `GoalGroups` as in `WeeklyHabitsPage.xaml`
+- Habit card template (type indicator, name, description, target, completion log sub-list, proof image icon)
+
+**Empty State** (`IsVisible="{Binding IsEmptyStateVisible}"`, center-aligned within `*` row):
+- Label: `"No active goals or habits scheduled for this week."` — `FontFamily=ShareTechMono`, secondary text colour
+- Button: `"Create a Goal"` (Primary style) — `Command="{Binding NavigateToCreateGoalCommand}"`
+
+**Proof Image Overlay** — full Grid.RowSpan overlay (identical to `WeeklyHabitsPage.xaml`)
+
+`HomePage.xaml.cs` — inject `HomeViewModel` via constructor, set `BindingContext`, override `OnAppearing` to call `_ = ViewModel.LoadAsync()`.
+
+`MauiProgram.cs` — add `builder.Services.AddTransient<HomeViewModel>()`.
+
+---
+
+### P21.6 — TDD
+
+**`tests/LifeGrid.Application.Tests/Home/GetCurrentWeekHabitsQueryTests.cs`** — 4 tests:
+
+1. `WednesdayDate_QueriesForPrecedingMonday` — mock `IDateTimeProvider` to a Wednesday (e.g. 2026-06-25), assert `weekRepository.GetByStartDateAsync` was called with 2026-06-23 (Monday).
+2. `MondayDate_QueriesForSameDay` — mock to a Monday (2026-06-23), assert called with 2026-06-23.
+3. `NoWeekFound_ReturnsFailureResult` — `GetByStartDateAsync` returns null, assert `result.IsSuccess == false`.
+4. `WeekWithNoGoals_ReturnsEmptyGoalGroups` — week found but `WeekGoals` is empty, assert `result.Value!.GoalGroups.Count == 0`.
+
+**ViewModel tests** — deferred (same `net10.0-android` target barrier as `TimelineViewModelTests.cs`; ViewModel flag logic is a direct consequence of handler return values covered by tests 3 & 4 above).
+
+---
+
+### P21.7 — Acceptance Criteria
+
+- `dotnet build LifeGrid.slnx` → 0 errors.
+- `dotnet test` → 260 prior + 4 new = **264 tests pass**.
+- Launching the app after onboarding → Home tab is the active default tab.
+- Home tab shows current-week header (`"Current Week — {date}"`) + all goal groups + habit cards.
+- When no week or goals exist for the current Monday → empty state message + `"Create a Goal"` button rendered; tapping button navigates to Create Goal page.
+- Proof image overlay functions identically to Phase 20 `WeeklyHabitsPage`.
+- Switching to Home tab and back does not push a new page onto the navigation stack (MAUI Shell `ContentTemplate` tab guarantee).
+
+**Status: DONE (implemented 2026-06-23)**
+
+### P21 Post-Implementation Corrections
+
+| Area | Plan | Actual / Fix |
+|---|---|---|
+| `WeekRepository.GetByStartDateAsync` | No eager loading specified | Missing `.Include(w => w.WeekGoals)` — week was found but `WeekGoals` collection was always empty; handler returned zero goal groups; Home showed empty state even with active goals |
+| Timeline current-week detection | `GoalAggregate.CalculateStartDate(DateTime.Today)` | That method is forward-looking (returns next Monday for non-Monday days); replaced with preceding-Monday formula `today.AddDays(-((int)today.DayOfWeek - Monday + 7) % 7)` in `TimelineViewModel` only — `CalculateStartDate` itself is unchanged and still used correctly in goal creation |
+| Post-onboarding and startup navigation | Not specified in Phase 21 requirements | `App.xaml.cs` (returning user startup) and `SetupViewModel.cs` (first-time onboarding completion) both navigated to `"//goals"`; changed to `"//home"`. `UserSetupViewModel.EditActiveGoalsAsync` intentionally navigates to `"//goals"` and was left unchanged |

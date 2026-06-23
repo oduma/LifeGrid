@@ -47,7 +47,7 @@ public partial class App
         {
             _appShellViewModel.SetOnboardingComplete();
             await _hudViewModel.LoadAsync();
-            await Shell.Current.GoToAsync("//goals");
+            await Shell.Current.GoToAsync("//home");
             return;
         }
 

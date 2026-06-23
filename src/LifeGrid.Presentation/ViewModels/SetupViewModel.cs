@@ -223,7 +223,7 @@ public partial class CreateGoalViewModel(IMediator mediator, AppShellViewModel a
 
         IsRefinementActive = false;
         appShellViewModel.SetOnboardingComplete();
-        await Shell.Current.GoToAsync("//goals");
+        await Shell.Current.GoToAsync("//home");
     }
 
     private void PopulateRefinementItems(IReadOnlyList<RefinementQuestionDto> questions)
