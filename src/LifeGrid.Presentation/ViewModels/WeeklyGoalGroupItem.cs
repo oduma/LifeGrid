@@ -1,0 +1,27 @@
+using LifeGrid.Application.WeeklyHabits;
+
+namespace LifeGrid.Presentation.ViewModels;
+
+public sealed class WeeklyGoalGroupItem
+{
+    public WeeklyGoalGroupItem(WeeklyGoalGroupDto dto)
+    {
+        GoalDescription    = dto.GoalDescription;
+        WeekLabel          = $"Week {dto.WeekGoalNumber}";
+        PenaltyState       = dto.PenaltyState;
+        GoalWeeklyGp       = dto.GoalWeeklyGp;
+        GoalWeeklyXpEarned = dto.GoalWeeklyXpEarned;
+        IsInPenalty        = dto.PenaltyState is "Probation_Week_2" or "Reckoning_Week_3";
+        MetricsText        = $"GP: {dto.GoalWeeklyGp:F2}  XP: {dto.GoalWeeklyXpEarned}";
+        Habits             = dto.Habits.Select(h => new WeeklyHabitItem(h)).ToList();
+    }
+
+    public string GoalDescription    { get; }
+    public string WeekLabel          { get; }
+    public string PenaltyState       { get; }
+    public double GoalWeeklyGp       { get; }
+    public int    GoalWeeklyXpEarned { get; }
+    public bool   IsInPenalty        { get; }
+    public string MetricsText        { get; }
+    public IReadOnlyList<WeeklyHabitItem> Habits { get; }
+}

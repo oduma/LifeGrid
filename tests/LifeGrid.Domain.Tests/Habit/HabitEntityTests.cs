@@ -91,7 +91,8 @@ public sealed class HabitEntityTests
     public void Habit_Create_SetsHabitTypeToPlanned()
     {
         var habit = HabitEntity.Create(
-            Guid.NewGuid(), "Run", "Go for a run", 5.0, "km", DateTime.UtcNow.AddDays(7));
+            Guid.NewGuid(), HabitType.Planned, "Run", "Go for a run", 5.0, "km",
+            DateTime.UtcNow.AddDays(7));
 
         habit.HabitType.Should().Be(HabitType.Planned);
     }
@@ -102,7 +103,8 @@ public sealed class HabitEntityTests
         var weekGoalId = Guid.NewGuid();
         var deadline   = new DateTime(2026, 6, 22);
 
-        var habit = HabitEntity.Create(weekGoalId, "Run 5k", "Run 5 kilometres", 5.0, "km", deadline);
+        var habit = HabitEntity.Create(
+            weekGoalId, HabitType.Planned, "Run 5k", "Run 5 kilometres", 5.0, "km", deadline);
 
         habit.WeekGoalId.Should().Be(weekGoalId);
         habit.HabitName.Should().Be("Run 5k");
@@ -116,7 +118,7 @@ public sealed class HabitEntityTests
     public void Habit_Create_GeneratesNonEmptyId()
     {
         var habit = HabitEntity.Create(
-            Guid.NewGuid(), "Run", "Desc", 5.0, "km", DateTime.UtcNow);
+            Guid.NewGuid(), HabitType.Planned, "Run", "Desc", 5.0, "km", DateTime.UtcNow);
 
         habit.HabitId.Should().NotBe(Guid.Empty);
     }

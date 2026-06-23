@@ -14,6 +14,7 @@ public partial class AppShell : Shell
         Routing.RegisterRoute("user-setup",              typeof(UserSetupPage));
         Routing.RegisterRoute("vice-survey",             typeof(ViceSurveyPage));
         Routing.RegisterRoute("overwhelmed-recalculate", typeof(OverwhelmedRecalculatePage));
+        Routing.RegisterRoute("week-detail",             typeof(WeeklyHabitsPage));
 
         viewModel.PropertyChanged += (_, e) =>
         {

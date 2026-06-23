@@ -99,4 +99,17 @@ public partial class TimelineViewModel(IMediator mediator) : ObservableObject, I
         _selectedWeek = item;
         item.IsSelected = true;
     }
+
+    [RelayCommand]
+    private async Task DrillDownToWeekAsync(TimelineWeekItem item)
+    {
+        var parameters = new ShellNavigationQueryParameters
+        {
+            ["weekId"] = item.WeekId
+        };
+        if (_filterGoalIds is { Count: > 0 })
+            parameters["filterGoalIds"] = _filterGoalIds;
+
+        await Shell.Current.GoToAsync("week-detail", parameters);
+    }
 }

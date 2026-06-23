@@ -61,7 +61,8 @@ public sealed class HabitRepositoryTests : IDisposable
     private static IReadOnlyList<HabitEntity> BuildHabits(Guid weekGoalId, int count = 3)
         => Enumerable.Range(1, count)
             .Select(i => HabitEntity.Create(
-                weekGoalId, $"Run {i * 3} km", $"Run {i * 3} kilometres",
+                weekGoalId, LifeGrid.Domain.Habit.HabitType.Planned,
+                $"Run {i * 3} km", $"Run {i * 3} kilometres",
                 i * 3.0, "km", new DateTime(2026, 6, 22)))
             .ToList();
 

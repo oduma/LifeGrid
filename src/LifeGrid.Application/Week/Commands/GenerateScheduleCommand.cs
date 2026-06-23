@@ -98,8 +98,8 @@ public sealed class GenerateScheduleCommandHandler(
             var weekDeadline = weekDto.StartDate.AddDays(6);
             var habits = weekDto.Habits
                 .Select(h => HabitEntity.Create(
-                    weekGoal.WeekGoalId, h.Description, h.Description,
-                    h.Value, h.Unit, weekDeadline))
+                    weekGoal.WeekGoalId, Domain.Habit.HabitType.Planned,
+                    h.Description, h.Description, h.Value, h.Unit, weekDeadline))
                 .ToList();
 
             await habitRepository.AddRangeAsync(habits, cancellationToken);

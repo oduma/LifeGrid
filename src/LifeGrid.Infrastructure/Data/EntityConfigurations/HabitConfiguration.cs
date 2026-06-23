@@ -27,5 +27,10 @@ internal sealed class HabitConfiguration : IEntityTypeConfiguration<Habit>
                .WithMany()
                .HasForeignKey(h => h.WeekGoalId)
                .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasMany(h => h.CompletedValuesLog)
+               .WithOne()
+               .HasForeignKey(l => l.HabitId)
+               .OnDelete(DeleteBehavior.Cascade);
     }
 }

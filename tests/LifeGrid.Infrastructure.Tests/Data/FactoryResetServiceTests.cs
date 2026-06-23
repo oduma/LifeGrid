@@ -61,6 +61,7 @@ public sealed class FactoryResetServiceTests : IDisposable
 
         var habit = HabitEntity.Create(
             weekGoal.WeekGoalId,
+            LifeGrid.Domain.Habit.HabitType.Planned,
             "Morning run", "Run 5km",
             5.0, "km",
             new DateTime(2026, 6, 22, 8, 0, 0, DateTimeKind.Utc));

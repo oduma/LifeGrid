@@ -113,6 +113,7 @@
                                 BindableLayout.ItemsSource="{Binding Goals}"
                                 Spacing="10">
 
+
                                 <BindableLayout.ItemTemplate>
                                     <DataTemplate>
 
@@ -163,6 +164,16 @@
                                 </BindableLayout.EmptyView>
 
                             </VerticalStackLayout>
+
+                            <!-- Drill-down button — visible only on the selected card -->
+                            <Button
+                                Text="VIEW WEEK DETAIL"
+                                IsVisible="{Binding IsSelected}"
+                                Command="{Binding Source={x:Reference PageRoot}, Path=BindingContext.DrillDownToWeekCommand}"
+                                CommandParameter="{Binding .}"
+                                Margin="0,8,0,0"
+                                FontFamily="{StaticResource FontShareTechMono}"
+                                FontSize="11" />
 
                         </VerticalStackLayout>
                     </Border>

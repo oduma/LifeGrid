@@ -18,6 +18,13 @@ internal sealed class HabitRepository(LifeGridDbContext db) : IHabitRepository
             .Where(h => h.WeekGoalId == weekGoalId)
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyList<HabitEntity>> GetByWeekGoalIdsAsync(
+        IReadOnlyList<Guid> weekGoalIds, CancellationToken ct = default)
+        => await db.Habits
+            .Include(h => h.CompletedValuesLog)
+            .Where(h => weekGoalIds.Contains(h.WeekGoalId))
+            .ToListAsync(ct);
+
     public async Task RemoveByWeekGoalIdsAsync(
         IReadOnlyList<Guid> weekGoalIds, CancellationToken ct = default)
     {
