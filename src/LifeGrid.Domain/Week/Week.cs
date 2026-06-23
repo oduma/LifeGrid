@@ -25,4 +25,6 @@ public sealed class Week
     public IReadOnlyCollection<WeekGoal.WeekGoal> WeekGoals => _weekGoals.AsReadOnly();
 
     internal void AddWeekGoal(WeekGoal.WeekGoal weekGoal) => _weekGoals.Add(weekGoal);
+
+    public void AddSpEarned(int amount) => TotalWeeklySpEarned += amount;
 }

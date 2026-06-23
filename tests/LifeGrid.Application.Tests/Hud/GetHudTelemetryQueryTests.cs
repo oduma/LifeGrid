@@ -1,4 +1,5 @@
 using FluentAssertions;
+using LifeGrid.Application.Common;
 using LifeGrid.Application.Hud;
 using LifeGrid.Application.UserProfile;
 using LifeGrid.Application.Week;
@@ -13,10 +14,18 @@ public sealed class GetHudTelemetryQueryTests
 {
     private readonly IUserProfileRepository      _profileRepo = Substitute.For<IUserProfileRepository>();
     private readonly IWeekRepository             _weekRepo    = Substitute.For<IWeekRepository>();
+    private readonly IDateTimeProvider           _clock       = Substitute.For<IDateTimeProvider>();
     private readonly GetHudTelemetryQueryHandler _handler;
 
+    // A known Monday so the current-Monday calculation is deterministic in tests
+    private static readonly DateTime FixedMonday =
+        new(2026, 6, 22, 0, 0, 0, DateTimeKind.Utc); // Monday
+
     public GetHudTelemetryQueryTests()
-        => _handler = new GetHudTelemetryQueryHandler(_profileRepo, _weekRepo);
+    {
+        _clock.UtcNow.Returns(FixedMonday);
+        _handler = new GetHudTelemetryQueryHandler(_profileRepo, _weekRepo, _clock);
+    }
 
     [Fact]
     public async Task NoProfile_ReturnsAllZeroDto()
@@ -38,11 +47,12 @@ public sealed class GetHudTelemetryQueryTests
     }
 
     [Fact]
-    public async Task WithProfileNoActiveWeek_ReturnsLifetimeMetrics_WeeklyAllZero()
+    public async Task WithProfileNoCurrentWeek_ReturnsLifetimeMetrics_WeeklyAllZero()
     {
         var profile = UserProfileEntity.Create();
         _profileRepo.GetSingleAsync(Arg.Any<CancellationToken>()).Returns(profile);
-        _weekRepo.GetActiveAsync(Arg.Any<CancellationToken>()).Returns((WeekEntity?)null);
+        _weekRepo.GetByStartDateAsync(Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+                 .Returns((WeekEntity?)null);
 
         var result = await _handler.Handle(new GetHudTelemetryQuery(), default);
 
@@ -63,14 +73,15 @@ public sealed class GetHudTelemetryQueryTests
         var profile = UserProfileEntity.Create();
         _profileRepo.GetSingleAsync(Arg.Any<CancellationToken>()).Returns(profile);
 
-        var week = WeekEntity.Create(1, new DateTime(2026, 6, 16, 0, 0, 0, DateTimeKind.Utc));
+        var week = WeekEntity.Create(1, FixedMonday);
         var wg1  = WeekGoalEntity.Create(week.WeekId, Guid.NewGuid(), 1);
         var wg2  = WeekGoalEntity.Create(week.WeekId, Guid.NewGuid(), 2);
         wg1.SetGoalWeeklyGp(2.0);
         wg2.SetGoalWeeklyGp(4.0);
         week.AddWeekGoal(wg1);
         week.AddWeekGoal(wg2);
-        _weekRepo.GetActiveAsync(Arg.Any<CancellationToken>()).Returns(week);
+        _weekRepo.GetByStartDateAsync(Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+                 .Returns(week);
 
         var result = await _handler.Handle(new GetHudTelemetryQuery(), default);
 
@@ -84,18 +95,37 @@ public sealed class GetHudTelemetryQueryTests
         var profile = UserProfileEntity.Create();
         _profileRepo.GetSingleAsync(Arg.Any<CancellationToken>()).Returns(profile);
 
-        var week = WeekEntity.Create(1, new DateTime(2026, 6, 16, 0, 0, 0, DateTimeKind.Utc));
+        var week = WeekEntity.Create(1, FixedMonday);
         var wg1  = WeekGoalEntity.Create(week.WeekId, Guid.NewGuid(), 1);
         var wg2  = WeekGoalEntity.Create(week.WeekId, Guid.NewGuid(), 2);
         wg1.SetGoalWeeklyXpEarned(100);
         wg2.SetGoalWeeklyXpEarned(150);
         week.AddWeekGoal(wg1);
         week.AddWeekGoal(wg2);
-        _weekRepo.GetActiveAsync(Arg.Any<CancellationToken>()).Returns(week);
+        _weekRepo.GetByStartDateAsync(Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+                 .Returns(week);
 
         var result = await _handler.Handle(new GetHudTelemetryQuery(), default);
 
         result.IsSuccess.Should().BeTrue();
         result.Value!.WeeklyXp.Should().Be(250);
+    }
+
+    [Fact]
+    public async Task Handler_RequestsCurrentMondayFromDateProvider()
+    {
+        // Wednesday — handler should strip back to Monday
+        _clock.UtcNow.Returns(new DateTime(2026, 6, 24, 0, 0, 0, DateTimeKind.Utc));
+        var profile = UserProfileEntity.Create();
+        _profileRepo.GetSingleAsync(Arg.Any<CancellationToken>()).Returns(profile);
+        _weekRepo.GetByStartDateAsync(Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+                 .Returns((WeekEntity?)null);
+
+        await _handler.Handle(new GetHudTelemetryQuery(), default);
+
+        await _weekRepo.Received(1)
+            .GetByStartDateAsync(
+                new DateTime(2026, 6, 22, 0, 0, 0, DateTimeKind.Utc), // Monday
+                Arg.Any<CancellationToken>());
     }
 }

@@ -1,16 +1,26 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
+using LifeGrid.Application.Gamification;
 using LifeGrid.Application.WeeklyHabits;
 using MediatR;
 using System.Collections.ObjectModel;
 
 namespace LifeGrid.Presentation.ViewModels;
 
-public partial class WeeklyHabitsViewModel(IMediator mediator)
-    : ObservableObject, IQueryAttributable
+public partial class WeeklyHabitsViewModel : ObservableObject, IQueryAttributable
 {
+    private readonly IMediator _mediator;
+
     private Guid                 _weekId;
     private IReadOnlyList<Guid>? _filterGoalIds;
+
+    public WeeklyHabitsViewModel(IMediator mediator)
+    {
+        _mediator = mediator;
+        WeakReferenceMessenger.Default.Register<WeeklyHabitsViewModel, EconomyStateMutatedMessage>(this,
+            async (r, _) => await r.LoadAsync());
+    }
 
     [ObservableProperty] private string  _weekHeaderText           = string.Empty;
     [ObservableProperty] private string  _weekStatusText           = string.Empty;
@@ -33,7 +43,7 @@ public partial class WeeklyHabitsViewModel(IMediator mediator)
 
     public async Task LoadAsync()
     {
-        var result = await mediator.Send(new GetWeeklyHabitsQuery(_weekId, _filterGoalIds));
+        var result = await _mediator.Send(new GetWeeklyHabitsQuery(_weekId, _filterGoalIds));
         if (!result.IsSuccess) return;
 
         var dto        = result.Value!;

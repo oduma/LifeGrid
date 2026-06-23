@@ -1,8 +1,10 @@
+using LifeGrid.Application.Gamification;
 using LifeGrid.Application.Onboarding.Queries;
 using LifeGrid.Infrastructure.Data;
 using LifeGrid.Infrastructure.DependencyInjection;
 using Microsoft.EntityFrameworkCore;
 using LifeGrid.Presentation.Pages;
+using LifeGrid.Presentation.Services;
 using LifeGrid.Presentation.ViewModels;
 using Microsoft.Extensions.Logging;
 using SkiaSharp.Views.Maui.Controls.Hosting;
@@ -32,6 +34,7 @@ public static class MauiProgram
         builder.Services.AddMediatR(cfg =>
             cfg.RegisterServicesFromAssembly(typeof(GetOrCreateOnboardingSessionQuery).Assembly));
 
+        builder.Services.AddSingleton<IEconomyStateBroadcaster, WeakReferenceMessengerBroadcaster>();
         builder.Services.AddSingleton<AppShellViewModel>();
         builder.Services.AddSingleton<HudViewModel>();
         builder.Services.AddSingleton<AppShell>();

@@ -3505,3 +3505,322 @@ Added to `HabitRepositoryTests.cs`:
 | Application | 117 | +5 | 122 |
 | Infrastructure | 64 | +2 | 66 |
 | **Total** | **264** | **+7** | **271** |
+
+---
+
+# Phase 23 — Gamification Engine: Economy Math & Global State Sync
+
+**Source:** `docs/requirements/Phase-23-requirements.md`  
+**Implementation Plan:** `docs/plans/phase-23-gamification-engine.md`
+
+---
+
+## P23.1 — Clarifications & Decisions
+
+| Question | Answer |
+|---|---|
+| XP/SP tier basis | **Per-entry** — tier is `ActualValue ÷ TargetValue` for the single submitted entry, not cumulative |
+| Double XP Mode (Flash Quest reward) | **Deferred** — Phase 23 omits all Double XP logic; engine scores all habit types identically |
+| Global reactivity pattern | **WeakReferenceMessenger** (CommunityToolkit.Mvvm) via an `IEconomyStateBroadcaster` abstraction defined in Application |
+
+---
+
+## P23.2 — Domain: GamificationCalculationEngine
+
+Located in `src/LifeGrid.Domain/Gamification/`. Zero-dependency pure C# — no EF Core, MAUI, or infrastructure packages.
+
+### Supporting Types
+
+**`ProofTier` (enum):** `Proven | PartiallyProven | Unproven`
+
+**`EntryReward` (record):** `int XpEarned, int SpEarned`
+
+### `GamificationCalculationEngine` (static class)
+
+**`CalculateEntryReward(HabitType, double actualValue, double targetValue, bool hasProof) → EntryReward`**
+
+Per-entry tier rules (Section 3.6 table):
+
+| Tier | Condition | XP | SP |
+|---|---|---|---|
+| Proven | `hasProof = true` AND `actualValue / targetValue ≥ 0.75` | 20 | 4 |
+| Partially Proven | `hasProof = true` AND `actualValue / targetValue < 0.75` | 10 | 2 |
+| Unproven | `hasProof = false` | 3 | 1 |
+
+**`CalculateHabitGp(double cumulativeTotalActual, double targetValue) → double`**
+- Returns `min(cumulativeTotalActual / targetValue, 1.0) × 100.0` — GP stored as 0–100 float.
+
+**`CalculateWeekGoalGp(IReadOnlyList<(double CumulativeTotal, double TargetValue, HabitType)> summaries) → double`**
+- Excludes `HabitType.MomentBurst` habits from the average (Section 4.3.1).
+- Returns average of `CalculateHabitGp()` for all remaining habits.
+
+**`CalculateLevel(int lifetimeXp, int levelThreshold = 300) → int`**
+- Returns `max(1, lifetimeXp / 300 + 1)` (integer division).
+- Rollover example per spec: 280 XP + 50 new = 330 total → Level 2; 330 % 300 = 30 XP carried over toward Level 3.
+
+---
+
+## P23.3 — Domain: Economy & Level Progression Methods
+
+### `UserEconomy` additions
+
+**`internal void GrantSp(int amount)`**
+- `CurrentSp += amount`
+- While `CurrentSp >= 30`: `CurrentSp -= 30`; call `GrantShield()` (respects `MaxShieldCap`)
+
+**`internal void SetLifetimeGpAverage(double value)`** — direct setter for persistence.
+
+### `UserProfile` additions
+
+**`public void GrantSp(int amount)`** — delegates to `Economy.GrantSp(amount)`
+
+**`public void ApplyXpAndLevelProgression(int xpEarned)`** — calls `Economy.GrantXp(xpEarned)` then recalculates `CurrentLevel = GamificationCalculationEngine.CalculateLevel(Economy.LifetimeXp)`
+
+**`public void UpdateLifetimeGpAverage(double average)`** — delegates to `Economy.SetLifetimeGpAverage(average)`
+
+---
+
+## P23.4 — Domain: WeekGoal & Week Mutation Methods
+
+### `WeekGoal` addition
+
+**`public void RecordMetricsUpdate(double newGp, int additionalXpEarned)`**
+- Sets `GoalWeeklyGp = newGp`
+- Increments `GoalWeeklyXpEarned += additionalXpEarned`
+
+Replaces the need to call the `internal` setters from outside the Domain assembly.
+
+### `Week` addition
+
+**`public void AddSpEarned(int amount)`** — `TotalWeeklySpEarned += amount`
+
+---
+
+## P23.5 — Application: Gamification Interfaces & DTOs
+
+Located in `src/LifeGrid.Application/Gamification/`.
+
+**`EconomyStateMutatedMessage` (record):** Marker type with no properties. Published after a successful commit; subscribers call `LoadAsync()` for fresh data.
+
+**`IEconomyStateBroadcaster` (interface):**
+```
+void Broadcast()
+```
+
+**`HabitCompletionSummaryDto` (record):** `Guid HabitId, double TargetValue, double TotalActualValue, HabitType HabitType`
+
+### `IHabitRepository` extension
+
+```
+Task<IReadOnlyList<HabitCompletionSummaryDto>> GetCompletionSummariesForWeekGoalAsync(
+    Guid weekGoalId, CancellationToken ct = default)
+```
+Returns per-habit cumulative completion totals (from DB) for GP calculation. Uses EF correlated subquery projection to bypass change-tracker (avoids double-counting the staged log).
+
+### `IWeekRepository` extensions
+
+```
+Task<WeekGoalEntity?> GetWeekGoalByIdAsync(Guid weekGoalId, CancellationToken ct = default)
+Task<(double GpSum, int GpCount)> GetWeekGoalGpStatsAsync(CancellationToken ct = default)
+```
+`GetWeekGoalByIdAsync` returns a tracked entity — EF detects mutations via snapshot, no explicit `Update()` needed.  
+`GetWeekGoalGpStatsAsync` returns (sum of all WeekGoal GP values, total WeekGoal count) from the DB for `LifetimeGpAverage` delta calculation.
+
+---
+
+## P23.6 — Application: `LogHabitProgressCommandHandler` Refactor
+
+New dependencies added to primary constructor: `IWeekRepository`, `IUserProfileRepository`, `IEconomyStateBroadcaster`.
+
+**Atomic pipeline after Phase 22's log creation:**
+
+```
+1.  Validate ActualValue > 0
+2.  Load Habit by HabitId; fail if null
+3.  Load WeekGoal by habit.WeekGoalId; fail if null
+4.  Load Week by weekGoal.WeekId; fail if null
+5.  Load UserProfile; fail if null
+6.  Stage CompletedValueLog via AddCompletionLogAsync (Phase 22, unchanged)
+7.  Load HabitCompletionSummaries for WeekGoal (DB totals, pre-commit)
+8.  Adjust summaries: add request.ActualValue to the logged habit's TotalActualValue
+9.  Determine hasProof = ProofText is not null || ProofImageUrl is not null
+10. reward = engine.CalculateEntryReward(habit.HabitType, ActualValue, habit.TargetValue, hasProof)
+11. newWeekGoalGp = engine.CalculateWeekGoalGp(adjustedSummaries)
+12. oldGp = weekGoal.GoalWeeklyGp
+13. (gpSum, gpCount) = GetWeekGoalGpStatsAsync(ct)
+14. newLifetimeGpAvg = gpCount > 0 ? (gpSum - oldGp + newWeekGoalGp) / gpCount : newWeekGoalGp
+15. weekGoal.RecordMetricsUpdate(newWeekGoalGp, reward.XpEarned)
+16. week.AddSpEarned(reward.SpEarned)
+17. profile.GrantSp(reward.SpEarned)
+18. profile.ApplyXpAndLevelProgression(reward.XpEarned)
+19. profile.UpdateLifetimeGpAverage(newLifetimeGpAvg)
+20. unitOfWork.CommitAsync(ct)  — single atomic transaction
+21. broadcaster.Broadcast()
+22. return Result.Success()
+```
+
+If any step fails, the entire operation rolls back (EF unit-of-work semantics).
+
+---
+
+## P23.7 — Infrastructure: Repository Implementations
+
+No EF migrations required — no new tables or columns. All queries operate on existing schema.
+
+### `HabitRepository` — `GetCompletionSummariesForWeekGoalAsync`
+
+EF LINQ-to-SQL projection:
+```csharp
+db.Habits
+    .Where(h => h.WeekGoalId == weekGoalId)
+    .Select(h => new HabitCompletionSummaryDto(
+        h.HabitId,
+        h.TargetValue,
+        db.CompletedValueLogs
+            .Where(l => l.HabitId == h.HabitId)
+            .Sum(l => (double?)l.ActualValue) ?? 0.0,
+        h.HabitType))
+```
+
+### `WeekRepository` — `GetWeekGoalByIdAsync`
+`db.WeekGoals.FirstOrDefaultAsync(wg => wg.WeekGoalId == weekGoalId, ct)` — returns tracked entity.
+
+### `WeekRepository` — `GetWeekGoalGpStatsAsync`
+`CountAsync` + `SumAsync` on `db.WeekGoals.GoalWeeklyGp`.
+
+---
+
+## P23.8 — Presentation: Global State Reactivity
+
+### `WeakReferenceMessengerBroadcaster` (new)
+
+**File:** `src/LifeGrid.Presentation/Services/WeakReferenceMessengerBroadcaster.cs`
+
+Implements `IEconomyStateBroadcaster`. Calls `WeakReferenceMessenger.Default.Send(new EconomyStateMutatedMessage())`.
+
+Registered in `MauiProgram.cs` as `AddSingleton<IEconomyStateBroadcaster, WeakReferenceMessengerBroadcaster>()`.
+
+### Subscriber ViewModels
+
+All four ViewModels register in their constructor using the **two-type-parameter generic overload** so the handler's recipient `r` is typed as the specific ViewModel (not `object`):
+
+```csharp
+// Correct — r is typed as the specific ViewModel; single-generic overload types r as object (CS1061)
+WeakReferenceMessenger.Default.Register<TViewModel, EconomyStateMutatedMessage>(this,
+    async (r, _) => await r.LoadAsync());
+```
+
+| ViewModel | Subscriber Effect |
+|---|---|
+| `HudViewModel` | Calls `LoadAsync()` → re-queries `GetHudTelemetryQuery` → updates all HUD bindings (GP, XP, SP, Level, Shields) |
+| `HomeViewModel` | Calls `LoadAsync()` → re-queries current-week habits → updates GP on visible habit cards |
+| `WeeklyHabitsViewModel` | Calls `LoadAsync()` → re-queries habit data for the viewed week |
+| `TimelineViewModel` | Calls `LoadAsync()` → re-queries timeline data → updates aggregated metric summaries |
+
+### `HudViewModel` — Singleton DI scope fix
+
+`HudViewModel` is registered as a Singleton. Injecting `IMediator` directly would cause all `GetHudTelemetryQuery` calls to share the root-scope `DbContext`, which returns stale EF identity-map entities after the first load.
+
+**Fix:** Inject `IServiceScopeFactory` instead of `IMediator`. Each `LoadAsync()` call creates a disposable scope and resolves a fresh `IMediator` from it:
+
+```csharp
+public HudViewModel(IServiceScopeFactory scopeFactory, AppShellViewModel appShellViewModel)
+
+public async Task LoadAsync(CancellationToken ct = default)
+{
+    using var scope    = _scopeFactory.CreateScope();
+    var       mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
+    var result = await mediator.Send(new GetHudTelemetryQuery(), ct);
+    ...
+}
+```
+
+### `HudViewModel.LoadAsync()` — UI thread dispatch
+
+`Broadcast()` is called from the handler after `await CommitAsync()`, so it runs on a thread pool thread. `OnPropertyChanged` must be dispatched to the main thread:
+
+```csharp
+MainThread.BeginInvokeOnMainThread(() =>
+{
+    Level = ...; GpLifetime = ...; // all property assignments
+});
+```
+
+### `AppShell` — initial HUD load
+
+`AppShell.xaml.cs` subscribes to its `Loaded` event to populate the HUD on startup (the ViewModel produces no initial data until `LoadAsync` is called):
+
+```csharp
+Loaded += async (_, _) => await hudViewModel.LoadAsync();
+```
+
+---
+
+## P23.9 — TDD Invariants
+
+### Domain Tests (`tests/LifeGrid.Domain.Tests/Gamification/`)
+
+| Test | Assert |
+|---|---|
+| `CalculateEntryReward_ProvenAbove75pct_Returns20Xp4Sp` | Actual=4, Target=5, hasProof=true → XP=20, SP=4 |
+| `CalculateEntryReward_PartiallyProvenBelow75pct_Returns10Xp2Sp` | Actual=3, Target=5, hasProof=true → XP=10, SP=2 |
+| `CalculateEntryReward_Unproven_Returns3Xp1Sp` | hasProof=false → XP=3, SP=1 |
+| `CalculateEntryReward_ProvenExactly75pct_IsProven` | Actual=3, Target=4 (75%), hasProof=true → XP=20, SP=4 |
+| `CalculateWeekGoalGp_ExcludesMomentBurstHabits` | Planned=80%, MomentBurst=100% → WeekGoalGP=80.0 |
+| `CalculateWeekGoalGp_CapsIndividualHabitAt100` | Actual=200, Target=100 → habitGP capped at 100.0 |
+| `CalculateLevel_Rollover_290XpPlus25_SetsLevel2` | LifetimeXp=315 → Level 2; 315 % 300 = 15 carried over |
+| `CalculateLevel_ExactThreshold_AdvancesLevel` | LifetimeXp=300 → Level 2 |
+| `UserEconomy_GrantSp_Milestone30_GrantsShield` | CurrentSp=28, GrantSp(5) → CurrentSp=3, ShieldsAvailable=1 |
+| `UserEconomy_GrantSp_DoesNotExceedShieldCap` | MaxShieldCap=2, ShieldsAvailable=2, GrantSp(35) → ShieldsAvailable=2 |
+
+### Application Tests (`tests/LifeGrid.Application.Tests/HabitLogging/`)
+
+Modify `LogHabitProgressCommandTests.cs`: add `IWeekRepository`, `IUserProfileRepository`, `IEconomyStateBroadcaster` mocks to the constructor; update defaults so the 5 existing tests continue to pass.
+
+New tests (3):
+
+| Test | Assert |
+|---|---|
+| `HappyPath_CallsBroadcasterExactlyOnce` | `IEconomyStateBroadcaster.Broadcast()` received exactly 1 time after a successful log |
+| `HappyPath_AppliesXpToProfile` | After handle, captured UserProfile has `LifetimeXp > 0` |
+| `HappyPath_RecordsGpOnWeekGoal` | After handle with a prior completion, captured WeekGoal argument has `GoalWeeklyGp > 0` |
+
+---
+
+## P23.9b — `GetHudTelemetryQuery` — Current-Week Lookup (Implementation Correction)
+
+`GetActiveAsync` was removed from `GetHudTelemetryQueryHandler`. All weeks are created with `Status = Active` and no code ever changes week status, so `FirstOrDefaultAsync(w => w.Status == WeekStatus.Active)` returned a random week (typically the oldest), not the current one.
+
+**Corrected approach:** inject `IDateTimeProvider`, calculate the current Monday, and call `GetByStartDateAsync(currentMonday)` — the same pattern used by `GetCurrentWeekHabitsQueryHandler`.
+
+```csharp
+public sealed class GetHudTelemetryQueryHandler(
+    IUserProfileRepository userProfileRepository,
+    IWeekRepository        weekRepository,
+    IDateTimeProvider      dateTimeProvider)  // added
+
+// Inside Handle:
+var today         = dateTimeProvider.UtcNow.Date;
+int daysFromMon   = ((int)today.DayOfWeek - (int)DayOfWeek.Monday + 7) % 7;
+var currentMonday = today.AddDays(-daysFromMon);
+var week = await weekRepository.GetByStartDateAsync(currentMonday, cancellationToken);
+```
+
+`GetHudTelemetryQueryTests` updated accordingly: `IDateTimeProvider` mock added to test constructor, stubs changed from `GetActiveAsync` → `GetByStartDateAsync(Arg.Any<DateTime>(), ...)`, and a new test `Handler_RequestsCurrentMondayFromDateProvider` verifies the Monday-stripping logic for mid-week dates.
+
+---
+
+## P23.10 — Acceptance Criteria
+
+- `dotnet build LifeGrid.slnx` → 0 errors, 0 warnings.
+- `dotnet test` → **286 tests pass** (95 domain + 125 application + 66 infrastructure).
+- Logging a habit awards XP and SP — both appear in the HUD immediately after modal dismiss.
+- HUD, Home tab, and Timeline tab all update without manual refresh.
+- SP milestone at 30: shield granted, `CurrentSp` resets; reflected in HUD `ShieldsActive`.
+- Level advance crosses 300 XP boundary: `Level` increments in the same commit and HUD reflects immediately.
+- Providing proof (text or image) on a log covering ≥75% of the target → 20 XP, 4 SP.
+- Providing proof on a log covering <75% of the target → 10 XP, 2 SP.
+- Logging with no proof → 3 XP, 1 SP regardless of coverage.
+- MomentBurst habits do not affect the parent WeekGoal's GP calculation.
+- No EF migration is generated — schema is unchanged.
+- HUD shows correct current-week GP/XP/SP on app startup (not 0) once the current week has any logged habit entries.

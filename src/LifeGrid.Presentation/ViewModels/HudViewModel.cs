@@ -1,23 +1,28 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Messaging;
+using LifeGrid.Application.Gamification;
 using LifeGrid.Application.Hud;
 using MediatR;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace LifeGrid.Presentation.ViewModels;
 
 public partial class HudViewModel : ObservableObject
 {
-    private readonly IMediator         _mediator;
-    private readonly AppShellViewModel _appShell;
+    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly AppShellViewModel    _appShell;
 
-    public HudViewModel(IMediator mediator, AppShellViewModel appShellViewModel)
+    public HudViewModel(IServiceScopeFactory scopeFactory, AppShellViewModel appShellViewModel)
     {
-        _mediator = mediator;
-        _appShell = appShellViewModel;
+        _scopeFactory = scopeFactory;
+        _appShell     = appShellViewModel;
         _appShell.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(AppShellViewModel.IsProfileActive))
                 OnPropertyChanged(nameof(IsProfileActive));
         };
+        WeakReferenceMessenger.Default.Register<HudViewModel, EconomyStateMutatedMessage>(this,
+            async (r, _) => await r.LoadAsync());
     }
 
     // Passthrough — keeps the existing DataTrigger in HudView.xaml working
@@ -36,17 +41,22 @@ public partial class HudViewModel : ObservableObject
 
     public async Task LoadAsync(CancellationToken ct = default)
     {
-        var result = await _mediator.Send(new GetHudTelemetryQuery(), ct);
+        using var scope   = _scopeFactory.CreateScope();
+        var       mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
+        var result = await mediator.Send(new GetHudTelemetryQuery(), ct);
         if (!result.IsSuccess) return;
-        var d      = result.Value!;
-        Level         = d.Level.ToString();
-        GpLifetime    = ((int)Math.Ceiling(d.LifetimeGp)).ToString();
-        GpWeekly      = ((int)Math.Ceiling(d.WeeklyGp)).ToString();
-        XpLifetime    = d.LifetimeXp.ToString();
-        XpWeekly      = d.WeeklyXp.ToString();
-        SpCurrent     = d.CurrentSp.ToString();
-        SpWeekly      = d.WeeklySpEarned.ToString();
-        ShieldsActive = d.ActiveShields.ToString();
-        ShieldsCap    = d.ShieldCap.ToString();
+        var d = result.Value!;
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            Level         = d.Level.ToString();
+            GpLifetime    = ((int)Math.Ceiling(d.LifetimeGp)).ToString();
+            GpWeekly      = ((int)Math.Ceiling(d.WeeklyGp)).ToString();
+            XpLifetime    = d.LifetimeXp.ToString();
+            XpWeekly      = d.WeeklyXp.ToString();
+            SpCurrent     = d.CurrentSp.ToString();
+            SpWeekly      = d.WeeklySpEarned.ToString();
+            ShieldsActive = d.ActiveShields.ToString();
+            ShieldsCap    = d.ShieldCap.ToString();
+        });
     }
 }

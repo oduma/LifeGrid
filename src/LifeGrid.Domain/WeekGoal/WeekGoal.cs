@@ -23,6 +23,12 @@ public sealed class WeekGoal
     public double       GoalWeeklyGp       { get; private set; }
     public int          GoalWeeklyXpEarned { get; private set; }
 
-    internal void SetGoalWeeklyGp(double value)       => GoalWeeklyGp       = value;
-    internal void SetGoalWeeklyXpEarned(int value)    => GoalWeeklyXpEarned = value;
+    internal void SetGoalWeeklyGp(double value)    => GoalWeeklyGp = value;
+    internal void SetGoalWeeklyXpEarned(int value) => GoalWeeklyXpEarned = value;
+
+    public void RecordMetricsUpdate(double newGp, int additionalXpEarned)
+    {
+        GoalWeeklyGp       = newGp;
+        GoalWeeklyXpEarned += additionalXpEarned;
+    }
 }

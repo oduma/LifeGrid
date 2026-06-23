@@ -1,13 +1,24 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
+using LifeGrid.Application.Gamification;
 using LifeGrid.Application.Home;
 using MediatR;
 using System.Collections.ObjectModel;
 
 namespace LifeGrid.Presentation.ViewModels;
 
-public partial class HomeViewModel(IMediator mediator) : ObservableObject
+public partial class HomeViewModel : ObservableObject
 {
+    private readonly IMediator _mediator;
+
+    public HomeViewModel(IMediator mediator)
+    {
+        _mediator = mediator;
+        WeakReferenceMessenger.Default.Register<HomeViewModel, EconomyStateMutatedMessage>(this,
+            async (r, _) => await r.LoadAsync());
+    }
+
     [ObservableProperty] private string  _weekHeaderText            = string.Empty;
     [ObservableProperty] private string  _weekStatusText            = string.Empty;
     [ObservableProperty] private bool    _isEmptyStateVisible;
@@ -19,7 +30,7 @@ public partial class HomeViewModel(IMediator mediator) : ObservableObject
 
     public async Task LoadAsync()
     {
-        var result  = await mediator.Send(new GetCurrentWeekHabitsQuery());
+        var result  = await _mediator.Send(new GetCurrentWeekHabitsQuery());
         var hasData = result.IsSuccess && result.Value?.GoalGroups.Count > 0;
 
         IsWeeklyDataVisible = hasData;

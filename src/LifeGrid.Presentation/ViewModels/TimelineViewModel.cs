@@ -1,16 +1,27 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
+using LifeGrid.Application.Gamification;
 using LifeGrid.Application.Timeline;
 using MediatR;
 using System.Collections.ObjectModel;
 
 namespace LifeGrid.Presentation.ViewModels;
 
-public partial class TimelineViewModel(IMediator mediator) : ObservableObject, IQueryAttributable
+public partial class TimelineViewModel : ObservableObject, IQueryAttributable
 {
+    private readonly IMediator _mediator;
+
     private int               _currentWeekIndex = -1;
     private TimelineWeekItem? _selectedWeek;
     private IReadOnlyList<Guid>? _filterGoalIds;
+
+    public TimelineViewModel(IMediator mediator)
+    {
+        _mediator = mediator;
+        WeakReferenceMessenger.Default.Register<TimelineViewModel, EconomyStateMutatedMessage>(this,
+            async (r, _) => await r.LoadAsync());
+    }
 
     public ObservableCollection<TimelineWeekItem> Weeks { get; } = new();
 
@@ -47,7 +58,7 @@ public partial class TimelineViewModel(IMediator mediator) : ObservableObject, I
 
     public async Task LoadAsync()
     {
-        var result = await mediator.Send(new GetTimelineQuery(_filterGoalIds));
+        var result = await _mediator.Send(new GetTimelineQuery(_filterGoalIds));
         if (!result.IsSuccess) return;
 
         Weeks.Clear();

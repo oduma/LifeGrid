@@ -33,4 +33,16 @@ public sealed class UserEconomy
         MaxShieldCap     = 3;
         ShieldsAvailable++;
     }
+
+    internal void GrantSp(int amount)
+    {
+        CurrentSp += amount;
+        while (CurrentSp >= 30)
+        {
+            CurrentSp -= 30;
+            GrantShield();
+        }
+    }
+
+    internal void SetLifetimeGpAverage(double value) => LifetimeGpAverage = value;
 }

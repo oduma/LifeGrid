@@ -1,3 +1,5 @@
+using LifeGrid.Domain.Gamification;
+
 namespace LifeGrid.Domain.UserProfile;
 
 public sealed class UserProfile
@@ -22,6 +24,16 @@ public sealed class UserProfile
 
     public void GrantXp(int amount)  => Economy.GrantXp(amount);
     public void DeductXp(int amount) => Economy.DeductXp(amount);
+
+    public void GrantSp(int amount) => Economy.GrantSp(amount);
+
+    public void ApplyXpAndLevelProgression(int xpEarned)
+    {
+        Economy.GrantXp(xpEarned);
+        CurrentLevel = GamificationCalculationEngine.CalculateLevel(Economy.LifetimeXp);
+    }
+
+    public void UpdateLifetimeGpAverage(double average) => Economy.SetLifetimeGpAverage(average);
 
     public void GrantBonusShield() => Economy.GrantShield();
 

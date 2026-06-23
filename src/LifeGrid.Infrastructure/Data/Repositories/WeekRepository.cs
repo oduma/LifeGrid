@@ -72,4 +72,16 @@ internal sealed class WeekRepository(LifeGridDbContext db) : IWeekRepository
                    .Include(w => w.WeekGoals)
                    .OrderBy(w => w.StartDate)
                    .ToListAsync(ct);
+
+    public Task<WeekGoalEntity?> GetWeekGoalByIdAsync(Guid weekGoalId, CancellationToken ct = default)
+        => db.WeekGoals.FirstOrDefaultAsync(wg => wg.WeekGoalId == weekGoalId, ct);
+
+    public async Task<(double GpSum, int GpCount)> GetWeekGoalGpStatsAsync(
+        CancellationToken ct = default)
+    {
+        var count = await db.WeekGoals.CountAsync(ct);
+        if (count == 0) return (0.0, 0);
+        var sum = await db.WeekGoals.SumAsync(wg => wg.GoalWeeklyGp, ct);
+        return (sum, count);
+    }
 }

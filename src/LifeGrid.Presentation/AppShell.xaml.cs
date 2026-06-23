@@ -10,6 +10,7 @@ public partial class AppShell : Shell
         InitializeComponent();
         BindingContext            = viewModel;
         HudControl.BindingContext = hudViewModel;
+        Loaded += async (_, _) => await hudViewModel.LoadAsync();
         Routing.RegisterRoute("create-goal",             typeof(CreateGoalPage));
         Routing.RegisterRoute("user-setup",              typeof(UserSetupPage));
         Routing.RegisterRoute("vice-survey",             typeof(ViceSurveyPage));

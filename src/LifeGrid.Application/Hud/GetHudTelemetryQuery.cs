@@ -1,3 +1,4 @@
+using LifeGrid.Application.Common;
 using LifeGrid.Application.UserProfile;
 using LifeGrid.Application.Week;
 using LifeGrid.Domain.Common;
@@ -9,7 +10,8 @@ public record GetHudTelemetryQuery : IRequest<Result<HudTelemetryDto>>;
 
 public sealed class GetHudTelemetryQueryHandler(
     IUserProfileRepository userProfileRepository,
-    IWeekRepository        weekRepository)
+    IWeekRepository        weekRepository,
+    IDateTimeProvider      dateTimeProvider)
     : IRequestHandler<GetHudTelemetryQuery, Result<HudTelemetryDto>>
 {
     public async Task<Result<HudTelemetryDto>> Handle(
@@ -20,7 +22,10 @@ public sealed class GetHudTelemetryQueryHandler(
         if (profile is null)
             return Result<HudTelemetryDto>.Success(new HudTelemetryDto(0, 0.0, 0.0, 0, 0, 0, 0, 0, 2));
 
-        var week = await weekRepository.GetActiveAsync(cancellationToken);
+        var today         = dateTimeProvider.UtcNow.Date;
+        int daysFromMon   = ((int)today.DayOfWeek - (int)DayOfWeek.Monday + 7) % 7;
+        var currentMonday = today.AddDays(-daysFromMon);
+        var week = await weekRepository.GetByStartDateAsync(currentMonday, cancellationToken);
         if (week is null)
             return Result<HudTelemetryDto>.Success(new HudTelemetryDto(
                 profile.CurrentLevel,

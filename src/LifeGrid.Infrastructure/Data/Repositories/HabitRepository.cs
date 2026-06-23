@@ -1,3 +1,4 @@
+using LifeGrid.Application.Gamification;
 using LifeGrid.Application.Habit;
 using Microsoft.EntityFrameworkCore;
 using CompletedValueLog = LifeGrid.Domain.Habit.CompletedValueLog;
@@ -44,4 +45,17 @@ internal sealed class HabitRepository(LifeGridDbContext db) : IHabitRepository
             .ToListAsync(ct);
         db.Habits.RemoveRange(habits);
     }
+
+    public async Task<IReadOnlyList<HabitCompletionSummaryDto>> GetCompletionSummariesForWeekGoalAsync(
+        Guid weekGoalId, CancellationToken ct = default)
+        => await db.Habits
+            .Where(h => h.WeekGoalId == weekGoalId)
+            .Select(h => new HabitCompletionSummaryDto(
+                h.HabitId,
+                h.TargetValue,
+                db.CompletedValueLogs
+                    .Where(l => l.HabitId == h.HabitId)
+                    .Sum(l => (double?)l.ActualValue) ?? 0.0,
+                h.HabitType))
+            .ToListAsync(ct);
 }

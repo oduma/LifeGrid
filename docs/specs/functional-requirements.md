@@ -161,20 +161,20 @@ Main interaction screen wireframe:<file path=".\assets\wireframes\wf6.png">
 
 ## 3. Execution Workflow (Playing the Game)
 
-### 3.1 The Habit Logging Trigger
+### 3.1 The Habit Logging Trigger (Done)
 * **Interaction:** The user initiates a logging event by tapping on an active Habit Card within the Weekly Habit Roster.
 * **Temporal Constraints:**
     * *Current Week:* Fully active and tappable.
     * *Past Weeks:* Active and tappable (allows retroactive logging for missed data entry).
     * *Future Weeks:* Strictly locked and non-interactive.
 
-### 3.2 The Logging Interface (Data Entry Form)
+### 3.2 The Logging Interface (Data Entry Form) (Done)
 Upon tapping a valid Habit Card, a dedicated screen is presented.
 
-#### 3.2.1 Informational Context (Read-Only)
+#### 3.2.1 Informational Context (Read-Only) (Done)
 * `Goal Name`, `Deadline Date`, `Week Number`, `Week Starting Date`, `Habit Name` & `Description`, `Target Value`.
 
-#### 3.2.2 The Completed Set (Editable Fields)
+#### 3.2.2 The Completed Set (Editable Fields) (Done)
 The user inputs their actual progress through a specific data payload called the **Completed Set**. 
 * `Completed Value`: The numeric amount achieved + measurement unit.
 * `Proof of Completion`: Requires one of two mutually exclusive inputs:
@@ -182,22 +182,22 @@ The user inputs their actual progress through a specific data payload called the
     * *Option B:* Image upload.
     * *Rule:* The UI must enforce this as an absolute XOR (exclusive OR) state.
 
-### 3.3 Multi-Entry Support
+### 3.3 Multi-Entry Support (Done)
 * **Incremental Progress:** Users can submit multiple, distinct Completed Sets for the same habit over the course of the week.
 * **Data Handling:** Each successful submission appends a new Completed Set object with a absolute `Timestamp` to the `Completed Values Log`. 
 
-### 3.4 Proof of Work Verification Paths
+### 3.4 Proof of Work Verification Paths (Done)
 The system treats both verification paths as equally prestigious. Providing Proof of Work awards Bonus XP.
 * **Path A (Visual Proof):** Image upload.
 * **Path B (Text Reflection):** Single-sentence reflection. The internal AI validates that the reflection is unique and genuine.
 
-### 3.5 The Cheating & Integrity Deterrent
+### 3.5 The Cheating & Integrity Deterrent  (Done)
 * **The Trigger:** The internal AI flags blatant data fabrication or duplicate verification images.
 * **The Consequence:** The user’s Shield Points counter instantly drops by a flat **-30 SP**.
 * **The Deficit Dynamic:** If SP drops below zero, they enter a deep deficit and must log flawless activities just to reach a 0 SP baseline before earning new Shields.
 * **Prompts** <file path=".\assets\prompts\prompt4.1.txt"> <file path=".\assets\prompts\prompt4.2.txt">
 
-### 3.6 Weekly Tracking & Behavioral Economy
+### 3.6 Weekly Tracking & Behavioral Economy (Done)
 * **Granular Logging:** Each log directly updates their trajectory toward that week's macro-goal volume.
 * **The Three-Tier Reward System:** Experience Points (XP) and Shield Points (SP) are allocated strictly based on effort and truthfulness:
 
@@ -211,7 +211,7 @@ The system treats both verification paths as equally prestigious. Providing Proo
 * **Momentum Burst Quests (Overachiever Reward):** Successful completion generates and awards a personalized **Overachiever Badge**.
 * **Flash Quests (Double XP State):** Successful, on-time completion instantly shifts the application into **Double XP Mode**. For the remainder of the current week, all standard XP earned is multiplied by two.
 
-### 3.8 Real-Time Progression Math & Global HUD
+### 3.8 Real-Time Progression Math & Global HUD  (Done)
 Every successful data entry triggers a recalculation of core metrics, which are broadcasted system-wide.
 
 * **Goal Progression (GP) Calculation:**
@@ -223,7 +223,7 @@ Every successful data entry triggers a recalculation of core metrics, which are 
     * *Persistent Visibility:* A floating banner anchored to the top of *every* screen.
     * *Data Surfaced:* The HUD continuously displays the user's current **GP**, total **XP**, and current **SP Balance**.
 
-### 3.8.1 Metric Stratification: Weekly vs. Cumulative Tracking
+### 3.8.1 Metric Stratification: Weekly vs. Cumulative Tracking  (Done)
 * **Dual-State Storage & Processing:** Every time a successful data entry triggers a recalculation, the database must update two separate values for each metric:
     * **Current Week Value:** Progress percentage and points earned within the currently active week. 
     * **Cumulative (Lifetime) Value:** An aggregated running total (XP/GP) or current progress-to-goal (SP).
@@ -234,10 +234,9 @@ Every successful data entry triggers a recalculation of core metrics, which are 
       * `XP: 120 (Week) | 1,450 (Lifetime)`
       * `SP: 12 (Earned this Week) | 24/30 (Current SP Balance)`
 
-### 3.8.2 XP Accumulation & Progression Architecture
+### 3.8.2 XP Accumulation & Progression Architecture  (Done)
 * **The Baseline Matrix:** Levels are achieved strictly through linear accumulation of XP.
 * **Display:** The current user Level is display on the HUD.
-* **Wireframe:** <file path=".\assets\wireframes\wf10.png">
 
 ### 3.8.3 Milestone Unlocks ("The Goodies")
 * **Level 10 & 20:** Unlocks a deep-dive, AI-driven Strategic Performance Audit (Macro-Trend Engine).
@@ -284,7 +283,7 @@ The user triggers an explicit "Overwhelmed" action for a specific goal.
 #### 4.3.2 System Pause Mechanisms
 * **Hibernate Action (Proactive Pause):** The target week has *not yet started*. User inputs a reason; week is safely suspended without penalty.
 * **Emergency Freeze Action (Reactive Pause):** The target week has *already started* AND the day is strictly *before Friday*. User inputs an emergency reason; week is frozen, protecting metrics from end-of-week penalty degradation. Costs **1 Life Happens Shield** as a processing fee.
-* **Re-Entry Week:** If a user freezes for 2+ consecutive weeks, the AI automatically scales down measurement metrics by 30% for the returning week.
+* **Re-Entry Week:** If a user freezes for 2+ consecutive weeks, the app automatically scales down measurement metrics by 30% for the returning week.
 
 #### 4.3.3 The Shield Economy (SP to Shield Transition)
 * **Earning:** The app tracks accumulated `Current_SP`. Every time the user reaches a milestone of **30 SP**, the counter resets to zero and grants **1 Life Happens Shield**.

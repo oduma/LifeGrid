@@ -1,3 +1,4 @@
+using LifeGrid.Application.Gamification;
 using CompletedValueLog = LifeGrid.Domain.Habit.CompletedValueLog;
 using HabitEntity = LifeGrid.Domain.Habit.Habit;
 
@@ -11,4 +12,6 @@ public interface IHabitRepository
     Task<IReadOnlyList<HabitEntity>> GetByWeekGoalIdsAsync(IReadOnlyList<Guid> weekGoalIds, CancellationToken ct = default);
     Task RemoveByWeekGoalIdsAsync(IReadOnlyList<Guid> weekGoalIds, CancellationToken ct = default);
     Task AddCompletionLogAsync(CompletedValueLog log, CancellationToken ct = default);
+    Task<IReadOnlyList<HabitCompletionSummaryDto>> GetCompletionSummariesForWeekGoalAsync(
+        Guid weekGoalId, CancellationToken ct = default);
 }
