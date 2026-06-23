@@ -110,6 +110,18 @@
                                             StrokeThickness="1"
                                             Stroke="{StaticResource SurfaceBrush}">
 
+                                            <Border.GestureRecognizers>
+                                                <TapGestureRecognizer
+                                                    Command="{Binding BindingContext.OpenHabitLoggingCommand,
+                                                              Source={x:Reference PageRoot}}"
+                                                    CommandParameter="{Binding .}" />
+                                            </Border.GestureRecognizers>
+                                            <Border.Triggers>
+                                                <DataTrigger TargetType="Border" Binding="{Binding IsInteractive}" Value="False">
+                                                    <Setter Property="Opacity" Value="0.4" />
+                                                </DataTrigger>
+                                            </Border.Triggers>
+
                                             <VerticalStackLayout Spacing="6">
 
                                                 <!-- Habit type + name -->

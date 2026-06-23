@@ -4,7 +4,7 @@ namespace LifeGrid.Presentation.ViewModels;
 
 public sealed class WeeklyGoalGroupItem
 {
-    public WeeklyGoalGroupItem(WeeklyGoalGroupDto dto)
+    public WeeklyGoalGroupItem(WeeklyGoalGroupDto dto, bool isFuture = false)
     {
         GoalDescription    = dto.GoalDescription;
         WeekLabel          = $"Week {dto.WeekGoalNumber}";
@@ -13,7 +13,9 @@ public sealed class WeeklyGoalGroupItem
         GoalWeeklyXpEarned = dto.GoalWeeklyXpEarned;
         IsInPenalty        = dto.PenaltyState is "Probation_Week_2" or "Reckoning_Week_3";
         MetricsText        = $"GP: {dto.GoalWeeklyGp:F2}  XP: {dto.GoalWeeklyXpEarned}";
-        Habits             = dto.Habits.Select(h => new WeeklyHabitItem(h)).ToList();
+        Habits             = dto.Habits
+            .Select(h => new WeeklyHabitItem(h, dto.GoalDescription, WeekLabel, isInteractive: !isFuture))
+            .ToList();
     }
 
     public string GoalDescription    { get; }

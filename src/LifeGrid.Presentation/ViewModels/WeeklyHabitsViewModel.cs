@@ -40,9 +40,27 @@ public partial class WeeklyHabitsViewModel(IMediator mediator)
         WeekHeaderText = dto.StartDate.ToString("MMM dd, yyyy");
         WeekStatusText = $"{dto.Status}  |  SP: {dto.TotalWeeklySpEarned}";
 
+        var isFuture = dto.StartDate.Date > DateTime.Today;
+
         GoalGroups.Clear();
         foreach (var g in dto.GoalGroups)
-            GoalGroups.Add(new WeeklyGoalGroupItem(g));
+            GoalGroups.Add(new WeeklyGoalGroupItem(g, isFuture));
+    }
+
+    [RelayCommand]
+    private async Task OpenHabitLoggingAsync(WeeklyHabitItem item)
+    {
+        if (!item.IsInteractive) return;
+        await Shell.Current.GoToAsync("habit-logging", new ShellNavigationQueryParameters
+        {
+            ["habitId"]         = item.HabitId,
+            ["habitName"]       = item.HabitName,
+            ["habitDescription"]= item.HabitDescription,
+            ["targetText"]      = item.TargetText,
+            ["measurementUnit"] = item.MeasurementUnit,
+            ["goalDescription"] = item.GoalDescription,
+            ["weekLabel"]       = item.WeekLabel
+        });
     }
 
     [RelayCommand]

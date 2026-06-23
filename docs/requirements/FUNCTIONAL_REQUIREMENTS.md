@@ -3195,3 +3195,313 @@ Commands:
 | `WeekRepository.GetByStartDateAsync` | No eager loading specified | Missing `.Include(w => w.WeekGoals)` — week was found but `WeekGoals` collection was always empty; handler returned zero goal groups; Home showed empty state even with active goals |
 | Timeline current-week detection | `GoalAggregate.CalculateStartDate(DateTime.Today)` | That method is forward-looking (returns next Monday for non-Monday days); replaced with preceding-Monday formula `today.AddDays(-((int)today.DayOfWeek - Monday + 7) % 7)` in `TimelineViewModel` only — `CalculateStartDate` itself is unchanged and still used correctly in goal creation |
 | Post-onboarding and startup navigation | Not specified in Phase 21 requirements | `App.xaml.cs` (returning user startup) and `SetupViewModel.cs` (first-time onboarding completion) both navigated to `"//goals"`; changed to `"//home"`. `UserSetupViewModel.EditActiveGoalsAsync` intentionally navigates to `"//goals"` and was left unchanged |
+
+---
+
+# Phase 22 — Habit Execution & Progress Logging (Preparatory Pipeline)
+
+## P22.1 — Goal
+
+Establish the baseline data-entry workflow for habit completion. Scope: data capture, persistence, and UI display only. Gamification math (XP/GP recalculations, Proof tier scoring, XOR enforcement) will be wired in a subsequent phase.
+
+---
+
+## P22.2 — Clarifications (resolved 2026-06-23)
+
+| # | Question | Answer |
+|---|---|---|
+| Q1 | Modal approach — bottom sheet or full ContentPage? | Modal `ContentPage` via Shell navigation (`"habit-logging"` route). Parent `OnAppearing` handles data refresh on pop-back. No new NuGet dependencies. |
+| Q2 | Enforce XOR proof constraint (text OR image) this phase? | No. Both proof fields are independently optional. XOR enforcement lands with gamification scoring in a later phase. |
+| Q3 | Lock future-week habit cards? | Yes. Spec section 3.1 mandates "Future Weeks: Strictly locked and non-interactive." Enforced at UI level in `WeeklyHabitsPage.xaml` (tap gesture disabled, card at 40% opacity). `HomeView` shows only the current week so no locking is needed there. |
+
+---
+
+## P22.3 — Domain Layer Changes
+
+### P22.3.1 — `CompletedValueLog.Create` Signature Update
+
+**File:** `src/LifeGrid.Domain/Habit/CompletedValueLog.cs`
+
+Change `Create` to accept a `DateTime timestamp` parameter instead of hardcoding `DateTime.UtcNow`:
+
+```csharp
+public static CompletedValueLog Create(
+    Guid     habitId,
+    double   actualValue,
+    string   measurementUnit,
+    string?  proofText,
+    string?  proofImageUrl,
+    DateTime timestamp) => new() { ..., Timestamp = timestamp };
+```
+
+**Rationale:** The Zero-Dependency Rule forbids injecting `IDateTimeProvider` into the Domain assembly. The command handler (Application layer) calls `IDateTimeProvider.UtcNow` and passes the result as `timestamp`, enabling deterministic tests.
+
+---
+
+## P22.4 — Application Layer
+
+### P22.4.1 — `IHabitRepository` Extensions
+
+**File:** `src/LifeGrid.Application/Habit/IHabitRepository.cs`
+
+Add two methods:
+- `Task<HabitEntity?> GetByIdAsync(Guid habitId, CancellationToken ct = default)`
+- `Task AddCompletionLogAsync(CompletedValueLog log, CancellationToken ct = default)`
+
+### P22.4.2 — `LogHabitProgressCommand`
+
+**File (new):** `src/LifeGrid.Application/HabitLogging/LogHabitProgressCommand.cs`
+
+```csharp
+public record LogHabitProgressCommand(
+    Guid    HabitId,
+    double  ActualValue,
+    string  MeasurementUnit,
+    string? ProofText,
+    string? ProofImageUrl) : IRequest<Result>;
+```
+
+`MeasurementUnit` is provided by the UI (already in the parent ViewModel's loaded habit item) rather than re-fetched from the DB.
+
+### P22.4.3 — `LogHabitProgressCommandHandler`
+
+**File (new):** `src/LifeGrid.Application/HabitLogging/LogHabitProgressCommandHandler.cs`
+
+Constructor injects: `IHabitRepository`, `IDateTimeProvider`, `IUnitOfWork`.
+
+Handler steps:
+1. If `command.ActualValue <= 0` → return `Result.Failure("Actual value must be greater than zero.")`
+2. `var habit = await habitRepository.GetByIdAsync(command.HabitId, ct)` — if null → return `Result.Failure("Habit not found.")`
+3. `var log = CompletedValueLog.Create(command.HabitId, command.ActualValue, command.MeasurementUnit, command.ProofText, command.ProofImageUrl, dateTimeProvider.UtcNow)`
+4. `await habitRepository.AddCompletionLogAsync(log, ct)`
+5. `await unitOfWork.CommitAsync(ct)`
+6. Return `Result.Success()`
+
+---
+
+## P22.5 — Infrastructure Layer
+
+### P22.5.1 — `HabitRepository` Extensions
+
+**File:** `src/LifeGrid.Infrastructure/Data/Repositories/HabitRepository.cs`
+
+Implement both new interface methods:
+
+```csharp
+public Task<HabitEntity?> GetByIdAsync(Guid habitId, CancellationToken ct = default)
+    => db.Habits.FirstOrDefaultAsync(h => h.HabitId == habitId, ct);
+
+public Task AddCompletionLogAsync(CompletedValueLog log, CancellationToken ct = default)
+{
+    db.CompletedValueLogs.Add(log);
+    return Task.CompletedTask;
+}
+```
+
+---
+
+## P22.6 — Presentation Layer
+
+### P22.6.1 — `WeeklyHabitItem` Enrichment
+
+**File:** `src/LifeGrid.Presentation/ViewModels/WeeklyHabitItem.cs`
+
+Add three properties and update the constructor signature:
+- `GoalDescription (string)` — passed from parent `WeeklyGoalGroupItem`
+- `WeekLabel (string)` — passed from parent `WeeklyGoalGroupItem`
+- `IsInteractive (bool)` — `true` for current/past weeks; `false` for future weeks
+
+```csharp
+public WeeklyHabitItem(WeeklyHabitItemDto dto, string goalDescription, string weekLabel, bool isInteractive)
+```
+
+### P22.6.2 — `WeeklyGoalGroupItem` Update
+
+**File:** `src/LifeGrid.Presentation/ViewModels/WeeklyGoalGroupItem.cs`
+
+Accept `bool isFuture` constructor parameter. Build each `WeeklyHabitItem` passing `GoalDescription`, `WeekLabel`, and `isInteractive = !isFuture`.
+
+### P22.6.3 — `WeeklyHabitsViewModel` Update
+
+**File:** `src/LifeGrid.Presentation/ViewModels/WeeklyHabitsViewModel.cs`
+
+After loading the DTO, compute `bool isFuture = dto.StartDate.Date > DateTime.Today`. Pass `isFuture` to each `WeeklyGoalGroupItem` constructor.
+
+Add command:
+```csharp
+[RelayCommand]
+private async Task OpenHabitLoggingAsync(WeeklyHabitItem item)
+{
+    if (!item.IsInteractive) return;
+    await Shell.Current.GoToAsync("habit-logging", new ShellNavigationQueryParameters
+    {
+        ["habitId"]          = item.HabitId,
+        ["habitName"]        = item.HabitName,
+        ["habitDescription"] = item.HabitDescription,
+        ["targetText"]       = item.TargetText,
+        ["measurementUnit"]  = item.MeasurementUnit,
+        ["goalDescription"]  = item.GoalDescription,
+        ["weekLabel"]        = item.WeekLabel
+    });
+}
+```
+
+### P22.6.4 — `HomeViewModel` Update
+
+**File:** `src/LifeGrid.Presentation/ViewModels/HomeViewModel.cs`
+
+Add the same `OpenHabitLoggingAsync` command (no `IsInteractive` guard — Home page shows current week only, so all habits are always interactive).
+
+`WeeklyGoalGroupItem` construction in `LoadAsync` passes `isFuture: false`.
+
+### P22.6.5 — `HabitLoggingViewModel`
+
+**File (new):** `src/LifeGrid.Presentation/ViewModels/HabitLoggingViewModel.cs`
+
+```csharp
+public partial class HabitLoggingViewModel(IMediator mediator) : ObservableObject, IQueryAttributable
+```
+
+Observable properties: `HabitId (Guid)`, `HabitName (string)`, `HabitDescription (string)`, `TargetText (string)`, `MeasurementUnit (string)`, `GoalDescription (string)`, `WeekLabel (string)`, `ActualValue (string)` (text input, validated before dispatch), `ProofText (string?)`, `ProofImageUrl (string?)`, `ErrorMessage (string)`, `IsBusy (bool)`.
+
+`ApplyQueryAttributes` — maps `habitId`, `habitName`, `habitDescription`, `targetText`, `measurementUnit`, `goalDescription`, `weekLabel` from query params.
+
+`IsNotBusy` computed property: `!IsBusy` — used as `CanExecute` for `LogProgressCommand`.
+
+`[RelayCommand(CanExecute = nameof(IsNotBusy))] LogProgressAsync()`:
+1. Parse `ActualValue` to `double`; if ≤ 0 → set `ErrorMessage`, return.
+2. Set `IsBusy = true`; dispatch `LogHabitProgressCommand`.
+3. Set `IsBusy = false`.
+4. On failure → set `ErrorMessage`; return.
+5. On success → `Shell.Current.GoToAsync("..")`.
+
+`[RelayCommand] PickProofImageAsync()`:
+- Calls `FilePicker.Default.PickAsync(new PickOptions { FileTypes = FilePickerFileType.Images })`.
+- On result: sets `ProofImageUrl = result.FullPath`.
+
+### P22.6.6 — `HabitLoggingPage`
+
+**File (new):** `src/LifeGrid.Presentation/Pages/HabitLoggingPage.xaml`
+
+Layout follows the Clean Pixel Neon design system (Light Mode, 2px corner radius, DM Mono / Share Tech Mono):
+
+**Zone A — Context Header (read-only):**
+- `GoalDescription` (DM Mono, Bold, OnSurface)
+- `WeekLabel` (Share Tech Mono, muted)
+- `HabitName` (DM Mono, Bold, larger)
+- `HabitDescription` (Share Tech Mono, wrapping)
+- `TargetText` (Share Tech Mono, muted)
+
+**Zone B — Data Entry Form (scrollable):**
+- Numeric `Entry` bound to `ActualValue` (keyboard: numeric) with adjacent muted `Label` bound to `MeasurementUnit`
+- Multi-line `Editor` bound to `ProofText` (optional, placeholder "Describe your proof…")
+- `Button` "Attach Image" (icon `add_a_photo` Material Symbol) bound to `PickProofImageCommand`
+- `Label` showing `ProofImageUrl` file name when non-null (image path confirmation)
+
+**Zone C — Action:**
+- `Label` bound to `ErrorMessage` (Error color `#FFFF1B77`, hidden when empty)
+- `Button` "Log Progress" (Primary style, 2px radius) bound to `LogProgressCommand`, disabled when `IsBusy`
+
+**File (new):** `src/LifeGrid.Presentation/Pages/HabitLoggingPage.xaml.cs`
+- Constructor injects `HabitLoggingViewModel`, sets `BindingContext`.
+- No `OnAppearing` needed (data arrives via `ApplyQueryAttributes` before page renders).
+
+### P22.6.7 — `WeeklyHabitsPage.xaml` Update
+
+**File:** `src/LifeGrid.Presentation/Pages/WeeklyHabitsPage.xaml`
+
+On the habit card `Border`, add:
+```xml
+<Border.GestureRecognizers>
+    <TapGestureRecognizer
+        Command="{Binding BindingContext.OpenHabitLoggingCommand, Source={x:Reference PageRoot}}"
+        CommandParameter="{Binding .}" />
+</Border.GestureRecognizers>
+<Border.Triggers>
+    <DataTrigger TargetType="Border" Binding="{Binding IsInteractive}" Value="False">
+        <Setter Property="Opacity" Value="0.4" />
+    </DataTrigger>
+</Border.Triggers>
+```
+
+### P22.6.8 — `HomePage.xaml` Update
+
+**File:** `src/LifeGrid.Presentation/Pages/HomePage.xaml`
+
+Same tap gesture on the habit card `Border` (no opacity trigger needed — Home page shows only the current week):
+```xml
+<Border.GestureRecognizers>
+    <TapGestureRecognizer
+        Command="{Binding BindingContext.OpenHabitLoggingCommand, Source={x:Reference PageRoot}}"
+        CommandParameter="{Binding .}" />
+</Border.GestureRecognizers>
+```
+
+### P22.6.9 — DI & Routing Registration
+
+**File:** `src/LifeGrid.Presentation/MauiProgram.cs`
+```csharp
+builder.Services.AddTransient<HabitLoggingViewModel>();
+builder.Services.AddTransient<HabitLoggingPage>();
+```
+
+**File:** `src/LifeGrid.Presentation/AppShell.xaml.cs`
+```csharp
+Routing.RegisterRoute("habit-logging", typeof(HabitLoggingPage));
+```
+
+---
+
+## P22.7 — TDD Invariants
+
+### Application Tests (`tests/LifeGrid.Application.Tests/HabitLogging/`)
+
+| Test | Assert |
+|---|---|
+| `LogHabitProgress_ValueZero_ReturnsFailure` | `ActualValue = 0` → `result.IsSuccess == false`; `CommitAsync` never called |
+| `LogHabitProgress_NegativeValue_ReturnsFailure` | `ActualValue = -1` → `result.IsSuccess == false`; `CommitAsync` never called |
+| `LogHabitProgress_HabitNotFound_ReturnsFailure` | `GetByIdAsync` returns null → `result.IsSuccess == false`; `CommitAsync` never called |
+| `LogHabitProgress_HappyPath_AddsLogAndCommits` | `AddCompletionLogAsync` called once with matching `HabitId`; `CommitAsync` called once; `result.IsSuccess == true` |
+| `LogHabitProgress_HappyPath_UsesDateTimeProviderTimestamp` | `IDateTimeProvider` mock returns a fixed `DateTime`; persisted log's `Timestamp` matches that value |
+
+**Note:** `HabitLoggingViewModel` tests (modal state binding, non-bleed between instances) require the `LifeGrid.Presentation` project which targets `net10.0-android`. These are deferred identically to `TimelineViewModelTests.cs` — they are stub placeholder tests only.
+
+### Infrastructure Integration Tests (`tests/LifeGrid.Infrastructure.Tests/Data/`)
+
+Added to `HabitRepositoryTests.cs`:
+
+| Test | Assert |
+|---|---|
+| `AddCompletionLogAsync_IncreasesCount` | `HabitCompletionLogs` count = 0 before, count = 1 after `AddCompletionLogAsync` + `SaveChanges` |
+| `AddCompletionLogAsync_PersistsCorrectTimestamp` | Persisted log's `Timestamp` equals the `DateTime` passed to `CompletedValueLog.Create` |
+
+---
+
+## P22.8 — Acceptance Criteria
+
+- `dotnet build LifeGrid.slnx` → 0 errors.
+- `dotnet test` → 264 prior + 7 new = **271 tests pass**.
+- Tapping a habit card on the Home tab or on the Week Detail page → `HabitLoggingPage` slides in; context header shows goal description, week label, habit name, description, and target.
+- Entering a value ≤ 0 and tapping "Log Progress" → inline error message; no navigation.
+- Entering a valid value (no proof) and tapping "Log Progress" → modal dismisses; parent page refreshes via `OnAppearing`, new log entry appears in the habit card's completion sub-list.
+- Entering proof text or attaching an image → each field accepted independently (no XOR enforcement).
+- Future-week habit cards in `WeeklyHabitsPage` appear at 40% opacity; tapping them does nothing.
+- Home page habit cards have full opacity (current week only — no locking required).
+
+**Status: DONE (implemented 2026-06-23)**
+
+### P22 Post-Implementation Corrections
+
+| Area | Plan | Actual / Fix |
+|---|---|---|
+| `HabitLoggingViewModel.IsNotBusy` | `IsNotBusy => !_isBusy` | Directly referencing the backing field caused MVVMTK0034 warning from the CommunityToolkit.Mvvm source generator. Fixed to `IsNotBusy => !IsBusy` (generated property). |
+| `data-structure.json` | Possibly needs update | No change required — `Completed_Values_Log` was already fully documented with all fields (`LogID`, `Actual_Value`, `Measurement_Unit`, `Proof_Text`, `Proof_Image_URL`, `Timestamp`). |
+
+### P22 Test Counts (as-built)
+
+| Layer | Prior | New | Total |
+|---|---|---|---|
+| Domain | 83 | 0 | 83 |
+| Application | 117 | +5 | 122 |
+| Infrastructure | 64 | +2 | 66 |
+| **Total** | **264** | **+7** | **271** |

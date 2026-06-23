@@ -1,5 +1,6 @@
 using FluentAssertions;
 using LifeGrid.Domain.Goal;
+using LifeGrid.Domain.Habit;
 using LifeGrid.Domain.UserProfile;
 using LifeGrid.Infrastructure.Data;
 using LifeGrid.Infrastructure.Data.Repositories;
@@ -133,5 +134,52 @@ public sealed class HabitRepositoryTests : IDisposable
         var result = await repository.GetByWeekGoalIdAsync(Guid.NewGuid());
 
         result.Should().BeEmpty();
+    }
+
+    // ── AddCompletionLogAsync ─────────────────────────────────────────────────
+
+    [Fact]
+    public async Task AddCompletionLogAsync_IncreasesCount()
+    {
+        var (_, weekGoalId) = await SeedWeekGoalAsync();
+        var habits          = BuildHabits(weekGoalId, count: 1);
+        var repository      = new HabitRepository(_db);
+
+        await repository.AddRangeAsync(habits);
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        var log = CompletedValueLog.Create(
+            habits[0].HabitId, 5.0, "km", null, null,
+            new DateTime(2026, 6, 23, 10, 0, 0, DateTimeKind.Utc));
+
+        await repository.AddCompletionLogAsync(log);
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        (await _db.CompletedValueLogs.CountAsync()).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task AddCompletionLogAsync_PersistsCorrectTimestamp()
+    {
+        var (_, weekGoalId) = await SeedWeekGoalAsync();
+        var habits          = BuildHabits(weekGoalId, count: 1);
+        var repository      = new HabitRepository(_db);
+
+        await repository.AddRangeAsync(habits);
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        var expectedTimestamp = new DateTime(2026, 6, 23, 14, 30, 0, DateTimeKind.Utc);
+        var log = CompletedValueLog.Create(
+            habits[0].HabitId, 3.0, "km", "Good run", null, expectedTimestamp);
+
+        await repository.AddCompletionLogAsync(log);
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        var persisted = await _db.CompletedValueLogs.FirstAsync();
+        persisted.Timestamp.Should().Be(expectedTimestamp);
     }
 }

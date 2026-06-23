@@ -169,8 +169,7 @@ Main interaction screen wireframe:<file path=".\assets\wireframes\wf6.png">
     * *Future Weeks:* Strictly locked and non-interactive.
 
 ### 3.2 The Logging Interface (Data Entry Form)
-Upon tapping a valid Habit Card, a modal or dedicated screen is presented.
-* **Wireframe** <file path=".\assets\wireframes\wf9.png">
+Upon tapping a valid Habit Card, a dedicated screen is presented.
 
 #### 3.2.1 Informational Context (Read-Only)
 * `Goal Name`, `Deadline Date`, `Week Number`, `Week Starting Date`, `Habit Name` & `Description`, `Target Value`.

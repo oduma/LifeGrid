@@ -1,0 +1,190 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:LifeGrid.Presentation.ViewModels"
+    x:Class="LifeGrid.Presentation.Pages.HabitLoggingPage"
+    x:DataType="vm:HabitLoggingViewModel"
+    Title="Log Progress"
+    BackgroundColor="{StaticResource Background}">
+
+    <Grid RowDefinitions="Auto,*,Auto">
+
+        <!-- Zone A: Read-only context header -->
+        <Border
+            Grid.Row="0"
+            Margin="16,8,16,4"
+            Padding="14,12"
+            BackgroundColor="{StaticResource Surface}"
+            StrokeShape="RoundRectangle 2"
+            StrokeThickness="1"
+            Stroke="{StaticResource SurfaceBrush}">
+            <VerticalStackLayout Spacing="2">
+                <Label
+                    Text="{Binding GoalDescription}"
+                    FontFamily="{StaticResource FontDMMono}"
+                    FontSize="13"
+                    FontAttributes="Bold"
+                    TextColor="{StaticResource OnSurface}" />
+                <Label
+                    Text="{Binding WeekLabel}"
+                    FontFamily="{StaticResource FontShareTechMono}"
+                    FontSize="11"
+                    TextColor="{StaticResource OnSurface}"
+                    Opacity="0.55" />
+                <Label
+                    Text="{Binding HabitName}"
+                    FontFamily="{StaticResource FontDMMono}"
+                    FontSize="16"
+                    FontAttributes="Bold"
+                    TextColor="{StaticResource OnSurface}"
+                    Margin="0,6,0,0" />
+                <Label
+                    Text="{Binding HabitDescription}"
+                    FontFamily="{StaticResource FontShareTechMono}"
+                    FontSize="12"
+                    TextColor="{StaticResource OnSurface}"
+                    Opacity="0.8"
+                    LineBreakMode="WordWrap" />
+                <Label
+                    Text="{Binding TargetText}"
+                    FontFamily="{StaticResource FontShareTechMono}"
+                    FontSize="11"
+                    TextColor="{StaticResource Primary}"
+                    Opacity="0.85"
+                    Margin="0,4,0,0" />
+            </VerticalStackLayout>
+        </Border>
+
+        <!-- Zone B: Data entry form -->
+        <ScrollView Grid.Row="1">
+            <VerticalStackLayout Spacing="16" Padding="16,12">
+
+                <!-- Actual Value + Unit -->
+                <VerticalStackLayout Spacing="4">
+                    <Label
+                        Text="VALUE LOGGED"
+                        FontFamily="{StaticResource FontShareTechMono}"
+                        FontSize="10"
+                        TextColor="{StaticResource OnSurface}"
+                        Opacity="0.55" />
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <Border
+                            Grid.Column="0"
+                            Padding="2,0"
+                            BackgroundColor="{StaticResource Surface}"
+                            StrokeShape="RoundRectangle 2"
+                            StrokeThickness="1"
+                            Stroke="{StaticResource SurfaceBrush}">
+                            <Entry
+                                Text="{Binding ActualValue}"
+                                Keyboard="Numeric"
+                                Placeholder="0"
+                                PlaceholderColor="{StaticResource OnSurface}"
+                                FontFamily="{StaticResource FontDMMono}"
+                                FontSize="16"
+                                TextColor="{StaticResource OnSurface}"
+                                BackgroundColor="Transparent"
+                                Margin="8,0" />
+                        </Border>
+                        <Label
+                            Grid.Column="1"
+                            Text="{Binding MeasurementUnit}"
+                            FontFamily="{StaticResource FontShareTechMono}"
+                            FontSize="14"
+                            TextColor="{StaticResource OnSurface}"
+                            Opacity="0.65"
+                            VerticalOptions="Center" />
+                    </Grid>
+                </VerticalStackLayout>
+
+                <!-- Proof Text -->
+                <VerticalStackLayout Spacing="4">
+                    <Label
+                        Text="PROOF TEXT (OPTIONAL)"
+                        FontFamily="{StaticResource FontShareTechMono}"
+                        FontSize="10"
+                        TextColor="{StaticResource OnSurface}"
+                        Opacity="0.55" />
+                    <Border
+                        Padding="4,2"
+                        BackgroundColor="{StaticResource Surface}"
+                        StrokeShape="RoundRectangle 2"
+                        StrokeThickness="1"
+                        Stroke="{StaticResource SurfaceBrush}">
+                        <Editor
+                            Text="{Binding ProofText}"
+                            Placeholder="Describe your proof…"
+                            PlaceholderColor="{StaticResource OnSurface}"
+                            FontFamily="{StaticResource FontShareTechMono}"
+                            FontSize="12"
+                            TextColor="{StaticResource OnSurface}"
+                            BackgroundColor="Transparent"
+                            AutoSize="TextChanges"
+                            MinimumHeightRequest="80"
+                            Margin="6,4" />
+                    </Border>
+                </VerticalStackLayout>
+
+                <!-- Proof Image -->
+                <VerticalStackLayout Spacing="4">
+                    <Label
+                        Text="PROOF IMAGE (OPTIONAL)"
+                        FontFamily="{StaticResource FontShareTechMono}"
+                        FontSize="10"
+                        TextColor="{StaticResource OnSurface}"
+                        Opacity="0.55" />
+                    <Button
+                        Text="&#xE439;  Attach Image"
+                        Command="{Binding PickProofImageCommand}"
+                        FontFamily="MaterialSymbolsRounded"
+                        FontSize="14"
+                        BackgroundColor="{StaticResource Surface}"
+                        TextColor="{StaticResource Secondary}"
+                        BorderColor="{StaticResource SurfaceBrush}"
+                        BorderWidth="1"
+                        CornerRadius="2"
+                        HorizontalOptions="Start"
+                        Padding="14,8" />
+                    <Label
+                        Text="{Binding ProofImageUrl}"
+                        FontFamily="{StaticResource FontShareTechMono}"
+                        FontSize="10"
+                        TextColor="{StaticResource Primary}"
+                        Opacity="0.85"
+                        LineBreakMode="TailTruncation"
+                        IsVisible="{Binding ProofImageUrl, Converter={StaticResource StringNotEmpty}}" />
+                </VerticalStackLayout>
+
+            </VerticalStackLayout>
+        </ScrollView>
+
+        <!-- Zone C: Error + action -->
+        <VerticalStackLayout
+            Grid.Row="2"
+            Spacing="8"
+            Padding="16,8,16,16">
+            <Label
+                Text="{Binding ErrorMessage}"
+                FontFamily="{StaticResource FontShareTechMono}"
+                FontSize="12"
+                TextColor="#FFFF1B77"
+                LineBreakMode="WordWrap"
+                IsVisible="{Binding ErrorMessage, Converter={StaticResource StringNotEmpty}}" />
+            <Button
+                Text="Log Progress"
+                Command="{Binding LogProgressCommand}"
+                IsEnabled="{Binding IsNotBusy}"
+                FontFamily="{StaticResource FontDMMono}"
+                FontSize="14"
+                FontAttributes="Bold"
+                BackgroundColor="{StaticResource Primary}"
+                TextColor="{StaticResource Background}"
+                CornerRadius="2"
+                HorizontalOptions="Fill"
+                Padding="0,14" />
+        </VerticalStackLayout>
+
+    </Grid>
+
+</ContentPage>

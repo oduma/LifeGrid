@@ -112,6 +112,13 @@
                                             StrokeThickness="1"
                                             Stroke="{StaticResource SurfaceBrush}">
 
+                                            <Border.GestureRecognizers>
+                                                <TapGestureRecognizer
+                                                    Command="{Binding BindingContext.OpenHabitLoggingCommand,
+                                                              Source={x:Reference PageRoot}}"
+                                                    CommandParameter="{Binding .}" />
+                                            </Border.GestureRecognizers>
+
                                             <VerticalStackLayout Spacing="6">
 
                                                 <!-- Habit type + name -->

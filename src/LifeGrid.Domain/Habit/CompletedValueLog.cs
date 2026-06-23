@@ -5,11 +5,12 @@ public sealed class CompletedValueLog
     private CompletedValueLog() { }
 
     public static CompletedValueLog Create(
-        Guid    habitId,
-        double  actualValue,
-        string  measurementUnit,
-        string? proofText,
-        string? proofImageUrl) => new()
+        Guid     habitId,
+        double   actualValue,
+        string   measurementUnit,
+        string?  proofText,
+        string?  proofImageUrl,
+        DateTime timestamp) => new()
     {
         LogId           = Guid.NewGuid(),
         HabitId         = habitId,
@@ -17,7 +18,7 @@ public sealed class CompletedValueLog
         MeasurementUnit = measurementUnit,
         ProofText       = proofText,
         ProofImageUrl   = proofImageUrl,
-        Timestamp       = DateTime.UtcNow
+        Timestamp       = timestamp
     };
 
     public Guid     LogId           { get; private set; }

@@ -1,5 +1,6 @@
 using LifeGrid.Application.Habit;
 using Microsoft.EntityFrameworkCore;
+using CompletedValueLog = LifeGrid.Domain.Habit.CompletedValueLog;
 using HabitEntity = LifeGrid.Domain.Habit.Habit;
 
 namespace LifeGrid.Infrastructure.Data.Repositories;
@@ -9,6 +10,15 @@ internal sealed class HabitRepository(LifeGridDbContext db) : IHabitRepository
     public Task AddRangeAsync(IReadOnlyList<HabitEntity> habits, CancellationToken ct = default)
     {
         db.Habits.AddRange(habits);
+        return Task.CompletedTask;
+    }
+
+    public Task<HabitEntity?> GetByIdAsync(Guid habitId, CancellationToken ct = default)
+        => db.Habits.FirstOrDefaultAsync(h => h.HabitId == habitId, ct);
+
+    public Task AddCompletionLogAsync(CompletedValueLog log, CancellationToken ct = default)
+    {
+        db.CompletedValueLogs.Add(log);
         return Task.CompletedTask;
     }
 

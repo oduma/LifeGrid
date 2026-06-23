@@ -37,7 +37,22 @@ public partial class HomeViewModel(IMediator mediator) : ObservableObject
 
         GoalGroups.Clear();
         foreach (var g in dto.GoalGroups)
-            GoalGroups.Add(new WeeklyGoalGroupItem(g));
+            GoalGroups.Add(new WeeklyGoalGroupItem(g, isFuture: false));
+    }
+
+    [RelayCommand]
+    private async Task OpenHabitLoggingAsync(WeeklyHabitItem item)
+    {
+        await Shell.Current.GoToAsync("habit-logging", new ShellNavigationQueryParameters
+        {
+            ["habitId"]         = item.HabitId,
+            ["habitName"]       = item.HabitName,
+            ["habitDescription"]= item.HabitDescription,
+            ["targetText"]      = item.TargetText,
+            ["measurementUnit"] = item.MeasurementUnit,
+            ["goalDescription"] = item.GoalDescription,
+            ["weekLabel"]       = item.WeekLabel
+        });
     }
 
     [RelayCommand]
