@@ -18,6 +18,7 @@
       {
         "BadgeID": "Guid",
         "Badge_Type": "String (e.g., Showing_Up_Gold, Momentum_Overachiever)",
+        "Icon_Name": "String // Phase 25: Material Symbol Unicode glyph (e.g., '\\uF6A0') stored at award time; rendered via MaterialSymbolsRounded font in the Vault grid",
         "Description": "String",
         "Date_Earned": "DateTime"
       }

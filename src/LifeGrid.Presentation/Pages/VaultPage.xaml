@@ -3,6 +3,7 @@
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:controls="clr-namespace:LifeGrid.Presentation.Controls"
+    xmlns:vm="clr-namespace:LifeGrid.Presentation.ViewModels"
     x:Class="LifeGrid.Presentation.Pages.VaultPage"
     Title="Vault"
     BackgroundColor="{StaticResource Background}">
@@ -11,12 +12,54 @@
 
         <ScrollView Grid.Row="0">
             <Grid>
+
+                <!-- Empty State -->
                 <Label
-                    Text="Placeholder Text"
+                    Text="The Vault is empty. Stick to your grid to earn your first badge."
+                    IsVisible="{Binding IsEmptyStateVisible}"
                     HorizontalOptions="Center"
                     VerticalOptions="Center"
                     HorizontalTextAlignment="Center"
-                    VerticalTextAlignment="Center" />
+                    FontFamily="ShareTechMono"
+                    FontSize="14"
+                    TextColor="{StaticResource OnSurface}"
+                    Margin="24,48" />
+
+                <!-- Badge Grid -->
+                <CollectionView
+                    ItemsSource="{Binding Badges}"
+                    IsVisible="{Binding IsEmptyStateVisible, Converter={StaticResource InverseBool}}"
+                    Margin="16,16,16,0">
+                    <CollectionView.ItemsLayout>
+                        <GridItemsLayout
+                            Orientation="Vertical"
+                            Span="{Binding GridSpan}"
+                            VerticalItemSpacing="16"
+                            HorizontalItemSpacing="8" />
+                    </CollectionView.ItemsLayout>
+                    <CollectionView.ItemTemplate>
+                        <DataTemplate x:DataType="vm:VaultBadgeItem">
+                            <VerticalStackLayout Spacing="4" Padding="4">
+                                <Label
+                                    Text="{Binding IconGlyph}"
+                                    FontFamily="MaterialSymbolsRounded"
+                                    FontSize="48"
+                                    TextColor="{StaticResource Primary}"
+                                    HorizontalOptions="Center"
+                                    HorizontalTextAlignment="Center" />
+                                <Label
+                                    Text="{Binding Description}"
+                                    FontFamily="ShareTechMono"
+                                    FontSize="11"
+                                    TextColor="{StaticResource OnSurface}"
+                                    HorizontalOptions="Center"
+                                    HorizontalTextAlignment="Center"
+                                    LineBreakMode="WordWrap" />
+                            </VerticalStackLayout>
+                        </DataTemplate>
+                    </CollectionView.ItemTemplate>
+                </CollectionView>
+
             </Grid>
         </ScrollView>
 

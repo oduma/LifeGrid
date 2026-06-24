@@ -4137,3 +4137,272 @@ Col 2: StatusSpText label (existing, with new Frozen/Hibernated DataTriggers)
 - Consecutive freeze: freezing a second consecutive week causes the following week's card to display a `"RETURNING"` badge; logging habits in that re-entry week requires only 70% of the normal target to achieve 100% GP.
 - No existing test regresses.
 - HUD shows correct current-week GP/XP/SP on app startup (not 0) once the current week has any logged habit entries.
+
+---
+
+## Phase 25 — The Vault: Badge & Achievement Showcase
+
+### P25.1 — Objective
+
+Activate the Vault tab (previously a placeholder) as a fully rendered achievement showcase screen. The screen displays a responsive grid of earned badges, each rendered with a Material Symbol icon and a text description. An empty-state message is shown when no badges have been earned yet. Badge-awarding logic is explicitly out of scope for this phase.
+
+---
+
+### P25.2 — Domain Layer: UserBadge Enhancement
+
+**File:** `src/LifeGrid.Domain/UserProfile/UserBadge.cs`
+
+Add `IconName` property to represent the Material Symbol Unicode glyph to be rendered:
+
+```csharp
+public string IconName { get; private set; } = string.Empty;
+```
+
+Add a static `Create` factory method:
+
+```csharp
+public static UserBadge Create(string badgeType, string description, string iconName, DateTime dateEarned)
+    => new()
+    {
+        BadgeId     = Guid.NewGuid(),
+        BadgeType   = badgeType,
+        Description = description,
+        IconName    = iconName,
+        DateEarned  = dateEarned
+    };
+```
+
+---
+
+### P25.3 — Domain Layer: UserProfile.AwardBadge
+
+**File:** `src/LifeGrid.Domain/UserProfile/UserProfile.cs`
+
+Add a public `AwardBadge` method to allow future awarding logic to append to the internal `_badges` list:
+
+```csharp
+public void AwardBadge(string badgeType, string description, string iconName, DateTime dateEarned)
+    => _badges.Add(UserBadge.Create(badgeType, description, iconName, dateEarned));
+```
+
+---
+
+### P25.4 — Application Layer: GetUserBadgesQuery
+
+**File:** `src/LifeGrid.Application/Badge/GetUserBadgesQuery.cs`
+
+```csharp
+public record GetUserBadgesQuery : IRequest<Result<IReadOnlyCollection<BadgeDto>>>;
+```
+
+Handler behaviour:
+- Calls `IUserProfileRepository.GetSingleAsync()`.
+- If profile is null or has zero badges, returns `Result<IReadOnlyCollection<BadgeDto>>.Success(Array.Empty<BadgeDto>())`.
+- Otherwise maps each `UserBadge` to a `BadgeDto` and returns the collection.
+
+**File:** `src/LifeGrid.Application/Badge/BadgeDto.cs`
+
+```csharp
+public record BadgeDto(Guid BadgeId, string BadgeType, string IconName, string Description, DateTime DateEarned);
+```
+
+---
+
+### P25.5 — Infrastructure Layer: UserProfileConfiguration + Migration
+
+**File:** `src/LifeGrid.Infrastructure/Data/EntityConfigurations/UserProfileConfiguration.cs`
+
+Inside the `OwnsMany(e => e.Badges, ...)` block, add:
+
+```csharp
+badge.Property(b => b.IconName).HasMaxLength(200);
+```
+
+**Migration:** `Phase25_AddIconNameToBadge`
+
+- Up: `AddColumn<string>("IconName", "UserBadges", nullable: false, defaultValue: "", maxLength: 200)`
+- Down: `DropColumn("IconName", "UserBadges")`
+
+---
+
+### P25.6 — Presentation Layer: VaultBadgeItem
+
+**File:** `src/LifeGrid.Presentation/ViewModels/VaultBadgeItem.cs`
+
+```csharp
+public sealed class VaultBadgeItem
+{
+    public string   IconGlyph   { get; init; } = string.Empty;
+    public string   Title       { get; init; } = string.Empty;
+    public string   Description { get; init; } = string.Empty;
+    public DateTime DateEarned  { get; init; }
+}
+```
+
+`IconGlyph` is populated directly from `BadgeDto.IconName` (the stored Unicode glyph string). No runtime symbol-name-to-glyph mapping is performed.
+
+---
+
+### P25.7 — Presentation Layer: VaultViewModel
+
+**File:** `src/LifeGrid.Presentation/ViewModels/VaultViewModel.cs`
+
+```csharp
+public partial class VaultViewModel : ObservableObject
+{
+    private readonly IMediator _mediator;
+
+    public VaultViewModel(IMediator mediator) { _mediator = mediator; }
+
+    [ObservableProperty] private bool _isEmptyStateVisible;
+    [ObservableProperty] private int  _gridSpan = 3;
+
+    public ObservableCollection<VaultBadgeItem> Badges { get; } = new();
+
+    public async Task LoadAsync()
+    {
+        var density      = DeviceDisplay.Current.MainDisplayInfo.Density;
+        var widthDp      = density > 0
+            ? DeviceDisplay.Current.MainDisplayInfo.Width / density
+            : 360;
+        GridSpan = widthDp >= 400 ? 4 : 3;
+
+        var result = await _mediator.Send(new GetUserBadgesQuery());
+        Badges.Clear();
+
+        if (!result.IsSuccess || result.Value is null || !result.Value.Any())
+        {
+            IsEmptyStateVisible = true;
+            return;
+        }
+
+        IsEmptyStateVisible = false;
+        foreach (var dto in result.Value)
+            Badges.Add(new VaultBadgeItem
+            {
+                IconGlyph   = dto.IconName,
+                Title       = dto.BadgeType,
+                Description = dto.Description,
+                DateEarned  = dto.DateEarned
+            });
+    }
+}
+```
+
+---
+
+### P25.8 — Presentation Layer: VaultPage
+
+**File:** `src/LifeGrid.Presentation/Pages/VaultPage.xaml.cs`
+
+Update constructor to inject and bind `VaultViewModel`; call `LoadAsync()` on `OnAppearing`.
+
+**File:** `src/LifeGrid.Presentation/Pages/VaultPage.xaml`
+
+Structure (inside existing `Grid RowDefinitions="*,Auto"`):
+
+**Row 0 (ScrollView → main content):**
+
+```xml
+<Grid>
+    <!-- Empty State -->
+    <Label
+        Text="The Vault is empty. Stick to your grid to earn your first badge."
+        IsVisible="{Binding IsEmptyStateVisible}"
+        HorizontalOptions="Center"
+        VerticalOptions="Center"
+        HorizontalTextAlignment="Center"
+        FontFamily="ShareTechMono"
+        FontSize="14"
+        TextColor="{StaticResource OnSurface}"
+        Margin="24,0" />
+
+    <!-- Badge Grid -->
+    <CollectionView
+        ItemsSource="{Binding Badges}"
+        IsVisible="{Binding IsEmptyStateVisible, Converter={StaticResource InverseBool}}"
+        Margin="16,16,16,0">
+        <CollectionView.ItemsLayout>
+            <GridItemsLayout
+                Orientation="Vertical"
+                Span="{Binding GridSpan}"
+                VerticalItemSpacing="16"
+                HorizontalItemSpacing="8" />
+        </CollectionView.ItemsLayout>
+        <CollectionView.ItemTemplate>
+            <DataTemplate x:DataType="vm:VaultBadgeItem">
+                <VerticalStackLayout Spacing="4" Padding="4">
+                    <Label
+                        Text="{Binding IconGlyph}"
+                        FontFamily="MaterialSymbolsRounded"
+                        FontSize="48"
+                        TextColor="{StaticResource Primary}"
+                        HorizontalOptions="Center"
+                        HorizontalTextAlignment="Center" />
+                    <Label
+                        Text="{Binding Description}"
+                        FontFamily="ShareTechMono"
+                        FontSize="11"
+                        TextColor="{StaticResource OnSurface}"
+                        HorizontalOptions="Center"
+                        HorizontalTextAlignment="Center"
+                        LineBreakMode="WordWrap" />
+                </VerticalStackLayout>
+            </DataTemplate>
+        </CollectionView.ItemTemplate>
+    </CollectionView>
+</Grid>
+```
+
+**Row 1 (AdBannerView):** unchanged.
+
+---
+
+### P25.9 — DI Registration
+
+**File:** `src/LifeGrid.Presentation/MauiProgram.cs`
+
+Add:
+
+```csharp
+builder.Services.AddTransient<VaultViewModel>();
+builder.Services.AddTransient<VaultPage>();
+```
+
+---
+
+### P25.10 — Tests
+
+#### `tests/LifeGrid.Domain.Tests/UserProfile/UserBadgeTests.cs` (new)
+- `Create_SetsAllProperties` — verify `BadgeType`, `Description`, `IconName`, `DateEarned` are set correctly; `BadgeId` is non-empty.
+
+#### `tests/LifeGrid.Domain.Tests/UserProfile/UserProfileTests.cs` (extend)
+- `AwardBadge_AppendsToBadgesCollection` — fresh profile has 0 badges; after `AwardBadge(...)`, `Badges.Count == 1` and the badge's `IconName` matches the argument.
+
+#### `tests/LifeGrid.Application.Tests/Badge/GetUserBadgesQueryTests.cs` (new)
+- `NullProfile_ReturnsEmptyCollection` — null from repository → success result with empty collection.
+- `ProfileWithNoBadges_ReturnsEmptyCollection` — fresh profile with zero badges → success result with empty collection.
+- `ProfileWithBadges_ReturnsMappedDtos` — profile with 1 badge → result collection has 1 `BadgeDto` with matching `IconName`, `BadgeType`, `Description`.
+
+#### `tests/LifeGrid.Application.Tests/Vault/VaultViewModelTests.cs` (stub)
+`VaultViewModel` lives in `LifeGrid.Presentation` (net10.0-android) and cannot be directly referenced from this net10.0 test project. Data-pipeline coverage is provided by `GetUserBadgesQueryTests`. Full ViewModel branch coverage is deferred to a future `LifeGrid.Presentation.Tests` project.
+
+---
+
+### P25.11 — Acceptance Criteria
+
+- `dotnet build LifeGrid.slnx` → 0 errors. Pre-existing warnings (12) are unchanged from the Phase 24 baseline: SQLite vulnerability advisory (NU1903) and `Device`/`NamedSize` obsolete API in ViceSurveyPage; neither introduced by Phase 25.
+- `dotnet test` → all tests pass (baseline 298 + 5 new = **303**).
+- Vault tab is tappable and navigates to VaultPage (previously a placeholder).
+- With no earned badges, the screen displays: `"The Vault is empty. Stick to your grid to earn your first badge."` centered in the Main Interaction Area.
+- With badges present, the screen displays a 3-column (or 4-column on wider screens ≥ 400dp) grid; each cell shows a Material Symbol icon (48dp, Primary color) above a description label (Share Tech Mono, 11sp, center-aligned).
+- The `AdBannerView` remains pinned at the bottom of the screen, unchanged.
+- No existing test regresses.
+
+### P25.12 — Implementation Notes (Post-Approval Corrections)
+
+**P25.8 — InverseBool converter key:** Plan referenced `{StaticResource InverseBoolConverter}` but the key registered in `App.xaml` is `InverseBool`. Corrected in the actual XAML.
+
+**P25.8 — DataTemplate namespace prefix:** Plan used `xmlns:viewmodels` + `x:DataType="viewmodels:VaultBadgeItem"` but the established project convention (used in GoalsPage) is `xmlns:vm` + `x:DataType="vm:VaultBadgeItem"`. Corrected to match the project standard.
+
+**P25.11 — Build warning baseline:** The "0 warnings" acceptance criterion is aspirational; actual build produces 12 pre-existing warnings introduced before Phase 25. Phase 25 adds no new warnings.

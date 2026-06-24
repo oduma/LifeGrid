@@ -18,6 +18,16 @@ Apply these exact hex codes to their respective Material semantic roles. Do not 
 - **On-Background / On-Surface:** `#58585a` (Use for all standard body text, input text, and default icons)
 - **Error:** `#FFFF1B77` (Use for failed validations, destructive actions, and error states)
 
+### 2.1 Gamification Semantic Colors (Achievement Tiers)
+
+In addition to the core functional palette, the application uses a strict trio of metallic tokens to represent gamification achievement tiers (Badges, Ranks, Streaks). Do not deviate from these hex codes when rendering tier-based UI.
+
+* **Tier-Gold:** `#FFC300` (Use for highest-tier achievements, master level badges)
+* **Tier-Silver:** `#9CA3AF` (Use for mid-tier achievements, intermediate badges)
+* **Tier-Bronze:** `#D47A43` (Use for entry-tier achievements, beginner badges)
+
+**Implementation Rule:** When rendering a tiered badge in MAUI, bind the `Color` property of the `<FontImageSource>` directly to these specific tier tokens based on the badge's data state.
+
 ## 3. Typography
 The application relies entirely on a monospaced typographic hierarchy to maintain a technical, structured aesthetic. Both fonts are available via Google Fonts.
 
@@ -32,11 +42,28 @@ Material Design 3's default heavy rounding (e.g., pill-shaped buttons) must be o
 - **Global Corner Radius:** `2px`
   - *Usage:* Apply a strict 2px slightly-rounded corner radius to all standard interactive and structural components. This includes Buttons, Cards, Dialog boxes, Text Fields, and Bottom Sheets.
 
-## 5. Iconography & Assets
-The application uses a hybrid approach, blending standard functional UI with custom gamified visuals.
+## 5. Iconography & Visual States (MAUI Implementation Standard)
 
-- **Standard UI Icons:** Strictly use standard Material Symbols/Icons. When implementing in Jetpack Compose, utilize the native `androidx.compose.material.icons` library. Do not attempt to write raw SVG paths for standard form controls or navigation.
-- **Custom Game Assets:** For gamified elements (e.g., Badges, Shields), rely exclusively on local image assets provided in the project's `res/drawable` directory.
+To guarantee maximum offline performance, crisp scaling, and seamless dynamic styling across both functional UI and gamified elements, the application relies entirely on font-based iconography.
+
+* **Universal Icon Rendering Standard:** ALL iconography—including standard navigation icons, action controls, AND gamified assets (e.g., Vault Badges, Shields)—MUST be rendered using embedded Google Material Symbols font files via MAUI's `<FontImageSource>`.
+* **Asset Prohibition:** Do not use static images (PNG/JPG), SVGs, network-fetched URL assets, or native Android `res/drawable` resources for any UI icons or gamified badges. 
+* **Dynamic Styling & States:** Colors and opacity states (e.g., locked vs. unlocked badges, disabled vs. active buttons) must be handled dynamically and natively within XAML. 
+  * Use **DataTriggers** bound to boolean states (e.g., `IsEarned`) to shift opacities or colors.
+  * Use the MAUI **Visual State Manager (VSM)** to handle interaction animations (e.g., `PointerOver` for hover scaling or glow effects).
+
+## 5.1 Vault Grid Layout Standards
+
+To ensure consistent grid behavior across Android form factors, implement the following constraints for the Vault screen:
+
+* **Badge Grid Configuration:**
+  - **Column Count:** 3 columns (Optimized for both readability and visual impact).
+  - **Icon Size (Glyph Size):** `64dp` (This ensures icon prominence while allowing for adequate padding).
+  - **Padding:** Maintain a minimum of `16dp` padding between icon containers.
+* **Text Styling for Grid Items:**
+  - **Font:** `Share Tech Mono` (Secondary Font).
+  - **Size:** `10sp` (Small enough to prevent truncation on 3-column layouts, but legible for badges).
+  - **Truncation:** If the badge title exceeds 2 lines, implement `LineBreakMode="WordWrap"` or `Trimming="Tail"`.
 
 ## 6. Spacing & Margin System (The Grid)
 Adhere strictly to the Google Material Design 8dp grid system to maintain visual rhythm.

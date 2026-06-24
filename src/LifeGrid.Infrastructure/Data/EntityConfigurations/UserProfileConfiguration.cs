@@ -39,6 +39,7 @@ public sealed class UserProfileConfiguration : IEntityTypeConfiguration<UserProf
             badge.Property(b => b.BadgeId).ValueGeneratedNever();
             badge.Property(b => b.BadgeType).HasMaxLength(100);
             badge.Property(b => b.Description).HasMaxLength(2000);
+            badge.Property(b => b.IconName).HasMaxLength(200);
             badge.Property(b => b.DateEarned);
         });
     }

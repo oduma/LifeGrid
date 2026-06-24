@@ -45,4 +45,7 @@ public sealed class UserProfile
     }
 
     public bool ConsumeShield() => Economy.ConsumeShield();
+
+    public void AwardBadge(string badgeType, string description, string iconName, DateTime dateEarned)
+        => _badges.Add(UserBadge.Create(badgeType, description, iconName, dateEarned));
 }

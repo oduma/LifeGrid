@@ -56,6 +56,8 @@ public static class MauiProgram
         builder.Services.AddTransient<TimelinePage>();
         builder.Services.AddTransient<WeeklyHabitsViewModel>();
         builder.Services.AddTransient<WeeklyHabitsPage>();
+        builder.Services.AddTransient<VaultViewModel>();
+        builder.Services.AddTransient<VaultPage>();
 
 #if DEBUG
         builder.Logging.AddDebug();
