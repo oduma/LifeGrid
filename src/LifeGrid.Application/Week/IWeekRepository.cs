@@ -18,4 +18,5 @@ public interface IWeekRepository
     Task<IReadOnlyList<WeekEntity>> GetTimelineAsync(CancellationToken ct = default);
     Task<WeekGoalEntity?> GetWeekGoalByIdAsync(Guid weekGoalId, CancellationToken ct = default);
     Task<(double GpSum, int GpCount)> GetWeekGoalGpStatsAsync(CancellationToken ct = default);
+    Task<WeekEntity?> GetByWeekNumberAsync(int weekNumber, CancellationToken ct = default);
 }

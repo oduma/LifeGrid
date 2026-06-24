@@ -5,4 +5,5 @@ public record TimelineWeekDto(
     DateTime                           StartDate,
     string                             Status,
     int                                TotalWeeklySpEarned,
-    IReadOnlyList<TimelineWeekGoalDto> Goals);
+    IReadOnlyList<TimelineWeekGoalDto> Goals,
+    bool                               IsReEntryWeek = false);

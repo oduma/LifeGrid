@@ -43,4 +43,6 @@ public sealed class UserProfile
         Economy.GrantSurveyBonusShield();
         IsViceSurveyCompleted = true;
     }
+
+    public bool ConsumeShield() => Economy.ConsumeShield();
 }

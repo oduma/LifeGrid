@@ -52,7 +52,8 @@ public sealed class GetTimelineQueryHandler(
                 wg.PenaltyState.ToString(),
                 wg.GoalWeeklyGp,
                 wg.GoalWeeklyXpEarned
-            )).ToList()
+            )).ToList(),
+            t.Week.IsReEntryWeek
         )).ToList();
 
         return Result<IReadOnlyList<TimelineWeekDto>>.Success(dtos);

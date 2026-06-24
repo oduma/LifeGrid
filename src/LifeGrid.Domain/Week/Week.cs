@@ -21,10 +21,20 @@ public sealed class Week
     public DateTime   StartDate           { get; private set; }
     public WeekStatus Status              { get; private set; }
     public int        TotalWeeklySpEarned { get; private set; }
+    public bool       IsReEntryWeek       { get; private set; }
 
     public IReadOnlyCollection<WeekGoal.WeekGoal> WeekGoals => _weekGoals.AsReadOnly();
 
     internal void AddWeekGoal(WeekGoal.WeekGoal weekGoal) => _weekGoals.Add(weekGoal);
 
     public void AddSpEarned(int amount) => TotalWeeklySpEarned += amount;
+
+    public void Pause(WeekStatus status)
+    {
+        if (status == WeekStatus.Active)
+            throw new InvalidOperationException("Cannot pause a week to Active status.");
+        Status = status;
+    }
+
+    public void MarkAsReEntry() => IsReEntryWeek = true;
 }

@@ -3823,4 +3823,317 @@ var week = await weekRepository.GetByStartDateAsync(currentMonday, cancellationT
 - Logging with no proof → 3 XP, 1 SP regardless of coverage.
 - MomentBurst habits do not affect the parent WeekGoal's GP calculation.
 - No EF migration is generated — schema is unchanged.
+
+---
+
+## Phase 24 — Ancillary Actions: Vice Survey Hook & Timeline Pausing
+
+### P24.1 — Vice Survey Availability Query
+
+**Location:** `src/LifeGrid.Application/Vice/GetViceSurveyAvailabilityQuery.cs`
+
+A new CQRS query that returns whether the Vice Survey is still available to the current user.
+
+- Query: `GetViceSurveyAvailabilityQuery : IRequest<Result<bool>>`
+- Handler loads the `UserProfile` via `IUserProfileRepository.GetSingleAsync()`.
+- Returns `Result<bool>.Success(false)` (not available) if profile is `null` or `IsViceSurveyCompleted == true`.
+- Returns `Result<bool>.Success(true)` (available) if `IsViceSurveyCompleted == false`.
+
+---
+
+### P24.2 — Domain: Week Pause & Re-Entry
+
+**Location:** `src/LifeGrid.Domain/Week/Week.cs`
+
+Two new mutation methods added to the `Week` entity:
+
+```csharp
+public void Pause(WeekStatus status)
+{
+    if (status == WeekStatus.Active)
+        throw new InvalidOperationException("Cannot pause a week to Active status.");
+    Status = status;
+}
+
+public void MarkAsReEntry() => IsReEntryWeek = true;
+
+public bool IsReEntryWeek { get; private set; }
+```
+
+**Location:** `src/LifeGrid.Domain/UserProfile/UserEconomy.cs` and `UserProfile.cs`
+
+New `ConsumeShield()` method on `UserEconomy` (returns `bool`):
+
+```csharp
+internal bool ConsumeShield()
+{
+    if (ShieldsAvailable <= 0) return false;
+    ShieldsAvailable--;
+    return true;
+}
+```
+
+New delegating method on `UserProfile`:
+
+```csharp
+public bool ConsumeShield() => Economy.ConsumeShield();
+```
+
+---
+
+### P24.3 — Application: PauseWeekCommand
+
+**Location:** `src/LifeGrid.Application/Week/PauseWeekCommand.cs`
+
+```
+PauseWeekCommand(Guid WeekId, WeekStatus PauseType) : IRequest<Result>
+```
+
+Handler dependencies: `IWeekRepository`, `IUserProfileRepository`, `IDateTimeProvider`, `IUnitOfWork`, `IEconomyStateBroadcaster`.
+
+**Hibernate path (`PauseType == WeekStatus.Hibernated`):**
+1. Load week by `WeekId`; return `Result.Failure("week_not_found")` if null.
+2. Guard: `week.StartDate.Date > dateTimeProvider.UtcNow.Date`; else `Result.Failure("week_already_started")`.
+3. `week.Pause(WeekStatus.Hibernated)`.
+4. `unitOfWork.CommitAsync()`.
+5. `broadcaster.Broadcast()`.
+
+**Freeze path (`PauseType == WeekStatus.Frozen`):**
+1. Load week by `WeekId`; return `Result.Failure("week_not_found")` if null.
+2. Guard: `week.StartDate.Date <= today`; else `Result.Failure("week_not_started")`.
+3. Guard: `today.DayOfWeek < DayOfWeek.Friday`; else `Result.Failure("freeze_window_closed")`.
+4. Load profile; guard `profile.ConsumeShield()` returns `true`; else `Result.Failure("no_shields")`.
+5. `week.Pause(WeekStatus.Frozen)`.
+6. **Re-Entry check:** load `prevWeek = weekRepository.GetByWeekNumberAsync(week.WeekNumber - 1)`. If `prevWeek?.Status == WeekStatus.Frozen`, load `nextWeek = weekRepository.GetByWeekNumberAsync(week.WeekNumber + 1)` and call `nextWeek.MarkAsReEntry()`.
+7. `unitOfWork.CommitAsync()`.
+8. `broadcaster.Broadcast()`.
+
+---
+
+### P24.4 — Application: IWeekRepository Addition
+
+**Location:** `src/LifeGrid.Application/Week/IWeekRepository.cs`
+
+New method signature:
+```csharp
+Task<WeekEntity?> GetByWeekNumberAsync(int weekNumber, CancellationToken ct = default);
+```
+
+---
+
+### P24.5 — Application: Re-Entry Week Scaling in LogHabitProgressCommandHandler
+
+**Location:** `src/LifeGrid.Application/HabitLogging/LogHabitProgressCommandHandler.cs`
+
+After loading `week`, if `week.IsReEntryWeek` is `true`, multiply `habit.TargetValue` by `0.7` (rounded up) to produce an effective target used only within the GP calculation:
+
+```csharp
+var effectiveTarget = week.IsReEntryWeek
+    ? (int)Math.Ceiling(habit.TargetValue * 0.7)
+    : habit.TargetValue;
+```
+
+Pass `effectiveTarget` instead of `habit.TargetValue` to `GamificationCalculationEngine.CalculateEntryReward(...)` and the completion summaries for `CalculateWeekGoalGp(...)`.
+
+This means a returning user only needs to complete 70% of the original target to achieve the same GP score, easing re-entry after consecutive freezes.
+
+**Implementation correction:** `effectiveTarget` must be declared as `double` (not `int`), because `habit.TargetValue` is `double` and `Math.Ceiling(double)` returns `double`. Declaring it as `int` produces CS0266 (no implicit conversion from `double`). Corrected code:
+```csharp
+double effectiveTarget = week.IsReEntryWeek
+    ? Math.Ceiling(habit.TargetValue * 0.7)
+    : habit.TargetValue;
+```
+The `CalculateWeekGoalGp` projection applies `effectiveTarget` only to the habit being logged (matched by `HabitId`); all other habits in the same WeekGoal retain their stored `TargetValue`.
+
+---
+
+### P24.6 — Infrastructure: Repository & Migration
+
+**Location:** `src/LifeGrid.Infrastructure/Data/Repositories/WeekRepository.cs`
+
+New method implementation:
+```csharp
+public Task<WeekEntity?> GetByWeekNumberAsync(int weekNumber, CancellationToken ct = default)
+    => db.Weeks
+         .Include(w => w.WeekGoals)
+         .FirstOrDefaultAsync(w => w.WeekNumber == weekNumber, ct);
+```
+
+**Location:** `src/LifeGrid.Infrastructure/Data/EntityConfigurations/WeekConfiguration.cs`
+
+Add to `Configure`:
+```csharp
+builder.Property(w => w.IsReEntryWeek);
+```
+
+**New migration:** `Phase24_AddIsReEntryWeek` — adds `IsReEntryWeek BIT NOT NULL DEFAULT 0` to the `Weeks` table.
+
+---
+
+### P24.7 — Presentation: GoalsViewModel Vice Survey Hook
+
+**Location:** `src/LifeGrid.Presentation/ViewModels/GoalsViewModel.cs`
+
+Additions:
+- `[ObservableProperty] private bool _isViceSurveyBannerVisible;`
+- Extend `LoadAsync()` to also fire `GetViceSurveyAvailabilityQuery` and set `IsViceSurveyBannerVisible = result.Value`.
+- `[RelayCommand] private async Task LaunchViceSurveyAsync()`: fire `LaunchViceSurveyCommand` (MediatR) → if `result.IsSuccess`, navigate to `"vice-survey"`.
+
+---
+
+### P24.8 — Presentation: GoalsPage.xaml Vice Survey Banner
+
+**Location:** `src/LifeGrid.Presentation/Pages/GoalsPage.xaml`
+
+The inner Grid (currently `RowDefinitions="*,Auto"`) is restructured to `RowDefinitions="Auto,*,Auto"` to accommodate a new top banner row (Row 0). The CollectionView moves to Row 1 and the action row to Row 2.
+
+**Banner design (Row 0):**
+- `Border` with `BackgroundColor="{StaticResource Secondary}"`, `Stroke="{StaticResource Error}"` @ 1px, `StrokeShape="RoundRectangle 2"`, `Margin="16,8"`, `Padding="12"`.
+- `IsVisible="{Binding IsViceSurveyBannerVisible}"`.
+- Contains a horizontal `Grid` with a warning icon (Material Symbol `warning`) on the left and text on the right.
+- Text: `"DETECT HIDDEN VICES"` in `ShareTechMono`, bold, 13pt, `TextColor="{StaticResource OnSecondary}"`.
+- Sub-text: `"Complete the bad habits survey to earn 1 Bonus Shield"` in `ShareTechMono`, 10pt, 60% opacity.
+- Tapping the whole banner executes `LaunchViceSurveyCommand` via `TapGestureRecognizer`.
+
+---
+
+### P24.9 — Presentation: TimelineWeekItem — Reactive Status
+
+**Location:** `src/LifeGrid.Presentation/ViewModels/TimelineWeekItem.cs`
+
+`Status` property changes from `init`-only to `[ObservableProperty]`:
+```csharp
+[ObservableProperty]
+[NotifyPropertyChangedFor(nameof(StatusSpText))]
+[NotifyPropertyChangedFor(nameof(CanHibernate))]
+[NotifyPropertyChangedFor(nameof(CanFreeze))]
+private string _status = string.Empty;
+```
+
+New properties added:
+```csharp
+public bool IsReEntryWeek { get; init; }
+
+public bool CanHibernate => Status == "Active" && StartDate.Date > DateTime.Today;
+public bool CanFreeze    => Status == "Active" && StartDate.Date <= DateTime.Today &&
+                             DateTime.Today.DayOfWeek < DayOfWeek.Friday;
+```
+
+`TimelineViewModel.LoadAsync()` sets `IsReEntryWeek = dto.IsReEntryWeek` (see P24.10 for DTO update).
+
+---
+
+### P24.10 — Application: TimelineWeekDto Carries IsReEntryWeek
+
+**Location:** `src/LifeGrid.Application/Timeline/TimelineWeekDto.cs`
+
+`IsReEntryWeek` added as a new field. `GetTimelineQueryHandler` maps `t.Week.IsReEntryWeek` to the DTO.
+
+---
+
+### P24.11 — Presentation: TimelineViewModel Pause Commands
+
+**Location:** `src/LifeGrid.Presentation/ViewModels/TimelineViewModel.cs`
+
+Two new `[RelayCommand]` methods:
+
+**`HibernateWeekAsync(TimelineWeekItem item)`:**
+1. Send `PauseWeekCommand(item.WeekId, WeekStatus.Hibernated)`.
+2. On failure: `DisplayAlertAsync` with the error code mapped to a user-friendly message.
+3. On success: `item.Status = WeekStatus.Hibernated.ToString()` (triggers reactive UI update).
+
+**`FreezeWeekAsync(TimelineWeekItem item)`:**
+1. Show confirmation: `DisplayAlertAsync("Emergency Freeze", "This will consume 1 Life Happens Shield. Continue?", "Freeze", "Cancel")`.
+2. If cancelled, return.
+3. Send `PauseWeekCommand(item.WeekId, WeekStatus.Frozen)`.
+4. On failure `"no_shields"`: `DisplayAlertAsync("No Shields", "You have no shields available to spend.", "OK")`.
+5. On failure `"freeze_window_closed"`: `DisplayAlertAsync("Cannot Freeze", "Emergency Freeze is only available before Friday of the target week.", "OK")`.
+6. On success: `item.Status = WeekStatus.Frozen.ToString()`.
+
+---
+
+### P24.12 — Presentation: TimelinePage.xaml Pause Buttons & Badge
+
+**Location:** `src/LifeGrid.Presentation/Pages/TimelinePage.xaml`
+
+**Zone A restructured** to 3 columns (adds re-entry badge column):
+```
+ColumnDefinitions="*,Auto,Auto"
+Col 0: WeekHeaderText label
+Col 1: RETURNING badge Border (IsVisible="{Binding IsReEntryWeek}", Secondary bg, OnSecondary text)
+Col 2: StatusSpText label (existing, with new Frozen/Hibernated DataTriggers)
+```
+
+**New DataTriggers on the `StatusSpText` label:**
+```xml
+<DataTrigger TargetType="Label" Binding="{Binding Status}" Value="Frozen">
+    <Setter Property="TextColor" Value="{StaticResource Error}" />
+    <Setter Property="Opacity" Value="1.0" />
+</DataTrigger>
+<DataTrigger TargetType="Label" Binding="{Binding Status}" Value="Hibernated">
+    <Setter Property="TextColor" Value="{StaticResource OnSurface}" />
+    <Setter Property="Opacity" Value="0.4" />
+</DataTrigger>
+```
+
+**Action button group** — all three buttons (VIEW WEEK DETAIL, HIBERNATE WEEK, FREEZE WEEK) are wrapped in a single `VerticalStackLayout` whose `IsVisible` is bound to `IsSelected`. This is the corrected implementation: the outer container guards all actions behind `IsSelected`, while `CanHibernate`/`CanFreeze` independently filter the inner pause buttons. The original plan had the pause buttons standalone with only their own `IsVisible` binding, which would have made them appear on non-selected cards.
+
+```xml
+<VerticalStackLayout IsVisible="{Binding IsSelected}" Spacing="4" Margin="0,8,0,0">
+    <Button Text="VIEW WEEK DETAIL"
+        Command="{Binding Source={x:Reference PageRoot}, Path=BindingContext.DrillDownToWeekCommand}"
+        CommandParameter="{Binding .}"
+        FontFamily="{StaticResource FontShareTechMono}" FontSize="11" />
+    <Button Text="HIBERNATE WEEK"
+        IsVisible="{Binding CanHibernate}"
+        BackgroundColor="{StaticResource Secondary}" TextColor="{StaticResource OnSecondary}"
+        Command="{Binding Source={x:Reference PageRoot}, Path=BindingContext.HibernateWeekCommand}"
+        CommandParameter="{Binding .}"
+        FontFamily="{StaticResource FontShareTechMono}" FontSize="11" />
+    <Button Text="FREEZE WEEK"
+        IsVisible="{Binding CanFreeze}"
+        BackgroundColor="{StaticResource Error}" TextColor="{StaticResource Surface}"
+        Command="{Binding Source={x:Reference PageRoot}, Path=BindingContext.FreezeWeekCommand}"
+        CommandParameter="{Binding .}"
+        FontFamily="{StaticResource FontShareTechMono}" FontSize="11" />
+</VerticalStackLayout>
+```
+
+---
+
+### P24.13 — Tests
+
+#### `tests/LifeGrid.Application.Tests/Vice/GetViceSurveyAvailabilityQueryTests.cs`
+- `NoProfile_ReturnsFalse` — null profile → available = false.
+- `SurveyCompleted_ReturnsFalse` — `IsViceSurveyCompleted = true` → available = false.
+- `SurveyNotCompleted_ReturnsTrue` — fresh profile → available = true.
+
+#### `tests/LifeGrid.Application.Tests/Week/PauseWeekCommandTests.cs`
+- `Hibernate_FutureWeek_Succeeds` — valid path, no shield consumed.
+- `Hibernate_StartedWeek_ReturnsFailure` — `StartDate ≤ today` → `"week_already_started"`.
+- `Freeze_CurrentWeek_BeforeFriday_ConsumesShield_Succeeds` — shield count decrements by 1.
+- `Freeze_NoShields_ReturnsNoShieldsFailure` — `"no_shields"`.
+- `Freeze_AfterThursday_ReturnsWindowClosedFailure` — `"freeze_window_closed"`.
+- `Freeze_PreviousWeekFrozen_MarksNextWeekAsReEntry` — `prevWeek.Status == Frozen` → `nextWeek.IsReEntryWeek == true`.
+- `Freeze_PreviousWeekNotFrozen_DoesNotMarkReEntry` — `prevWeek.Status == Active` → `nextWeek.IsReEntryWeek` unchanged.
+
+#### `tests/LifeGrid.Application.Tests/HabitLogging/LogHabitProgressCommandTests.cs` (new test added)
+- `ReEntryWeek_EffectiveTargetReducedToSeventyPercent` — logs 7.0 against a habit with stored target 10.0 on a re-entry week; verifies `weekGoal.GoalWeeklyGp ≈ 100.0` (effective target = 7.0 met exactly). Actual test name in code: `ReEntryWeek_EffectiveTargetReducedToSeventyPercent`.
+
+#### GoalsViewModel banner-visibility tests — **NOT CREATED (deferred)**
+`GoalsViewModel` lives in `LifeGrid.Presentation` which targets `net10.0-android`. The Application.Tests project targets `net10.0`; cross-framework project references are not supported. A dedicated `LifeGrid.Presentation.Tests` (MAUI-targeted) project would be required. Deferred. The underlying `GetViceSurveyAvailabilityQuery` logic is fully covered by 3 dedicated query handler tests.
+
+---
+
+### P24.14 — Acceptance Criteria
+
+- `dotnet build LifeGrid.slnx` → 0 errors, 0 warnings.
+- `dotnet test` → all tests pass (baseline 286 + 12 new = **298**). Note: GoalsViewModel banner-visibility tests require a Presentation-layer test project (MAUI-targeted) which is deferred; the underlying `GetViceSurveyAvailabilityQuery` logic is fully covered by 3 dedicated query tests.
+- Goals view: `"DETECT HIDDEN VICES"` banner visible for a user with `IsViceSurveyCompleted = false`; tapping routes to Vice Survey page; after survey completion banner collapses on next Goals view load.
+- Goals view: banner is absent (not merely invisible — `IsVisible=false`) for a user who has completed the survey.
+- Timeline view: selecting a future Active week shows `HIBERNATE WEEK` button; tapping executes without a shield cost; week card `Status` updates to `"Hibernated"` immediately.
+- Timeline view: selecting the current week (before Friday) shows `FREEZE WEEK` button; tapping shows confirmation dialog mentioning Shield cost; confirming deducts 1 shield (HUD updates); week card `Status` updates to `"Frozen"` immediately.
+- Timeline view: `FREEZE WEEK` button is absent for weeks before the current week or after Thursday of the current week.
+- Consecutive freeze: freezing a second consecutive week causes the following week's card to display a `"RETURNING"` badge; logging habits in that re-entry week requires only 70% of the normal target to achieve 100% GP.
+- No existing test regresses.
 - HUD shows correct current-week GP/XP/SP on app startup (not 0) once the current week has any logged habit entries.

@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.Input;
 using LifeGrid.Application.Goal;
 using LifeGrid.Application.Onboarding.Commands;
 using LifeGrid.Application.Timeline;
+using LifeGrid.Application.Vice;
 using MediatR;
 using System.Collections.ObjectModel;
 
@@ -11,6 +12,8 @@ namespace LifeGrid.Presentation.ViewModels;
 public partial class GoalsViewModel(IMediator mediator) : ObservableObject
 {
     public ObservableCollection<GoalSummaryItem> Goals { get; } = new();
+
+    [ObservableProperty] private bool _isViceSurveyBannerVisible;
 
     // ── Data loading ──────────────────────────────────────────────────────────
 
@@ -31,6 +34,9 @@ public partial class GoalsViewModel(IMediator mediator) : ObservableObject
                 Status       = dto.Status,
                 TotalWeeks   = dto.TotalWeeks,
             });
+
+        var availResult = await mediator.Send(new GetViceSurveyAvailabilityQuery());
+        IsViceSurveyBannerVisible = availResult.IsSuccess && availResult.Value;
     }
 
     // ── Selection state ───────────────────────────────────────────────────────
@@ -97,6 +103,14 @@ public partial class GoalsViewModel(IMediator mediator) : ObservableObject
     }
 
     // ── Swipe commands ────────────────────────────────────────────────────────
+
+    [RelayCommand]
+    private async Task LaunchViceSurveyAsync()
+    {
+        var result = await mediator.Send(new LaunchViceSurveyCommand());
+        if (!result.IsSuccess) return;
+        await Shell.Current.GoToAsync("vice-survey");
+    }
 
     [RelayCommand]
     private async Task AddGoalAsync()

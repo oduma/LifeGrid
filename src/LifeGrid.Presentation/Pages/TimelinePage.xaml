@@ -71,7 +71,7 @@
                         <VerticalStackLayout Spacing="12">
 
                             <!-- Zone A: Week header -->
-                            <Grid ColumnDefinitions="*,Auto">
+                            <Grid ColumnDefinitions="*,Auto,Auto">
 
                                 <!-- Left: "Week of Jun 21" -->
                                 <Label
@@ -83,9 +83,27 @@
                                     TextColor="{StaticResource OnSurface}"
                                     VerticalOptions="Center" />
 
+                                <!-- Re-entry badge — visible only for returning weeks -->
+                                <Border
+                                    Grid.Column="1"
+                                    Padding="4,2"
+                                    Margin="4,0"
+                                    IsVisible="{Binding IsReEntryWeek}"
+                                    BackgroundColor="{StaticResource Secondary}"
+                                    StrokeShape="RoundRectangle 2"
+                                    StrokeThickness="0"
+                                    VerticalOptions="Center">
+                                    <Label
+                                        Text="RETURNING"
+                                        FontFamily="{StaticResource FontShareTechMono}"
+                                        FontSize="10"
+                                        FontAttributes="Bold"
+                                        TextColor="{StaticResource OnSecondary}" />
+                                </Border>
+
                                 <!-- Right: "Active | SP: 15" -->
                                 <Label
-                                    Grid.Column="1"
+                                    Grid.Column="2"
                                     Text="{Binding StatusSpText}"
                                     FontFamily="{StaticResource FontShareTechMono}"
                                     FontSize="12"
@@ -96,6 +114,14 @@
                                         <DataTrigger TargetType="Label" Binding="{Binding IsHighlighted}" Value="False">
                                             <Setter Property="TextColor" Value="{StaticResource OnSurface}" />
                                             <Setter Property="Opacity" Value="0.6" />
+                                        </DataTrigger>
+                                        <DataTrigger TargetType="Label" Binding="{Binding Status}" Value="Frozen">
+                                            <Setter Property="TextColor" Value="{StaticResource Error}" />
+                                            <Setter Property="Opacity" Value="1.0" />
+                                        </DataTrigger>
+                                        <DataTrigger TargetType="Label" Binding="{Binding Status}" Value="Hibernated">
+                                            <Setter Property="TextColor" Value="{StaticResource OnSurface}" />
+                                            <Setter Property="Opacity" Value="0.4" />
                                         </DataTrigger>
                                     </Label.Triggers>
                                 </Label>
@@ -165,15 +191,40 @@
 
                             </VerticalStackLayout>
 
-                            <!-- Drill-down button — visible only on the selected card -->
-                            <Button
-                                Text="VIEW WEEK DETAIL"
+                            <!-- Action buttons — all visible only on the selected card -->
+                            <VerticalStackLayout
                                 IsVisible="{Binding IsSelected}"
-                                Command="{Binding Source={x:Reference PageRoot}, Path=BindingContext.DrillDownToWeekCommand}"
-                                CommandParameter="{Binding .}"
-                                Margin="0,8,0,0"
-                                FontFamily="{StaticResource FontShareTechMono}"
-                                FontSize="11" />
+                                Spacing="4"
+                                Margin="0,8,0,0">
+
+                                <Button
+                                    Text="VIEW WEEK DETAIL"
+                                    Command="{Binding Source={x:Reference PageRoot}, Path=BindingContext.DrillDownToWeekCommand}"
+                                    CommandParameter="{Binding .}"
+                                    FontFamily="{StaticResource FontShareTechMono}"
+                                    FontSize="11" />
+
+                                <Button
+                                    Text="HIBERNATE WEEK"
+                                    IsVisible="{Binding CanHibernate}"
+                                    BackgroundColor="{StaticResource Secondary}"
+                                    TextColor="{StaticResource OnSecondary}"
+                                    Command="{Binding Source={x:Reference PageRoot}, Path=BindingContext.HibernateWeekCommand}"
+                                    CommandParameter="{Binding .}"
+                                    FontFamily="{StaticResource FontShareTechMono}"
+                                    FontSize="11" />
+
+                                <Button
+                                    Text="FREEZE WEEK"
+                                    IsVisible="{Binding CanFreeze}"
+                                    BackgroundColor="{StaticResource Error}"
+                                    TextColor="{StaticResource Surface}"
+                                    Command="{Binding Source={x:Reference PageRoot}, Path=BindingContext.FreezeWeekCommand}"
+                                    CommandParameter="{Binding .}"
+                                    FontFamily="{StaticResource FontShareTechMono}"
+                                    FontSize="11" />
+
+                            </VerticalStackLayout>
 
                         </VerticalStackLayout>
                     </Border>

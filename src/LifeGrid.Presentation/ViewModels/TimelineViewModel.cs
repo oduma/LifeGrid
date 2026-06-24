@@ -3,6 +3,8 @@ using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using LifeGrid.Application.Gamification;
 using LifeGrid.Application.Timeline;
+using LifeGrid.Application.Week;
+using LifeGrid.Domain.Week;
 using MediatR;
 using System.Collections.ObjectModel;
 
@@ -78,6 +80,7 @@ public partial class TimelineViewModel : ObservableObject, IQueryAttributable
                 Status              = dto.Status,
                 TotalWeeklySpEarned = dto.TotalWeeklySpEarned,
                 IsCurrentWeek       = dto.StartDate.Date == currentMonday.Date,
+                IsReEntryWeek       = dto.IsReEntryWeek,
                 Goals               = dto.Goals.Select(g => new TimelineWeekGoalItem(
                     g.GoalDescription,
                     g.PenaltyState,
@@ -123,5 +126,44 @@ public partial class TimelineViewModel : ObservableObject, IQueryAttributable
             parameters["filterGoalIds"] = _filterGoalIds;
 
         await Shell.Current.GoToAsync("week-detail", parameters);
+    }
+
+    [RelayCommand]
+    private async Task HibernateWeekAsync(TimelineWeekItem item)
+    {
+        var result = await _mediator.Send(new PauseWeekCommand(item.WeekId, WeekStatus.Hibernated));
+        if (!result.IsSuccess)
+        {
+            var msg = result.Error == "week_already_started"
+                ? "This week has already started and cannot be hibernated."
+                : "Could not hibernate this week.";
+            await Shell.Current.CurrentPage.DisplayAlertAsync("Hibernate Failed", msg, "OK");
+            return;
+        }
+        item.Status = WeekStatus.Hibernated.ToString();
+    }
+
+    [RelayCommand]
+    private async Task FreezeWeekAsync(TimelineWeekItem item)
+    {
+        var confirmed = await Shell.Current.CurrentPage.DisplayAlertAsync(
+            "Emergency Freeze",
+            "This will consume 1 Life Happens Shield. Continue?",
+            "Freeze", "Cancel");
+        if (!confirmed) return;
+
+        var result = await _mediator.Send(new PauseWeekCommand(item.WeekId, WeekStatus.Frozen));
+        if (!result.IsSuccess)
+        {
+            var msg = result.Error switch
+            {
+                "no_shields"           => "You have no Life Happens Shields available.",
+                "freeze_window_closed" => "Emergency Freeze is only available before Friday of the target week.",
+                _                      => "Could not freeze this week."
+            };
+            await Shell.Current.CurrentPage.DisplayAlertAsync("Freeze Failed", msg, "OK");
+            return;
+        }
+        item.Status = WeekStatus.Frozen.ToString();
     }
 }

@@ -45,4 +45,11 @@ public sealed class UserEconomy
     }
 
     internal void SetLifetimeGpAverage(double value) => LifetimeGpAverage = value;
+
+    internal bool ConsumeShield()
+    {
+        if (ShieldsAvailable <= 0) return false;
+        ShieldsAvailable--;
+        return true;
+    }
 }

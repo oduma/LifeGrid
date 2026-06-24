@@ -62,13 +62,20 @@ public sealed class LogHabitProgressCommandHandler(
                 : s)
             .ToList();
 
+        // Re-entry weeks lower the required target by 30% to ease the user back in
+        double effectiveTarget = week.IsReEntryWeek
+            ? Math.Ceiling(habit.TargetValue * 0.7)
+            : habit.TargetValue;
+
         bool hasProof = request.ProofText is not null || request.ProofImageUrl is not null;
         var  reward   = GamificationCalculationEngine.CalculateEntryReward(
-            habit.HabitType, request.ActualValue, habit.TargetValue, hasProof);
+            habit.HabitType, request.ActualValue, effectiveTarget, hasProof);
 
         double newWeekGoalGp = GamificationCalculationEngine.CalculateWeekGoalGp(
             adjustedSummaries
-                .Select(s => (s.TotalActualValue, s.TargetValue, s.HabitType))
+                .Select(s => s.HabitId == request.HabitId
+                    ? (s.TotalActualValue, effectiveTarget, s.HabitType)
+                    : (s.TotalActualValue, s.TargetValue,   s.HabitType))
                 .ToList());
 
         // Capture old GP before mutation for LifetimeGpAverage delta

@@ -70,6 +70,7 @@
     "Week_Number": "Integer",
     "Start_Date": "DateTime",
     "Status": "String (Active, Hibernated, Frozen)",
+    "Is_ReEntry_Week": "Boolean // Phase 24: true when this week follows 2+ consecutive Frozen weeks; habit effective targets are reduced by 30% to ease re-entry",
     "Global_Metrics": {
       "Total_Weekly_SP_Earned": "Integer // SP isn't penalised by goals, so it can stay global"
     },

@@ -151,7 +151,7 @@ Main interaction screen wireframe:<file path=".\assets\wireframes\wf6.png">
 * **Isolation Mode:** A prominent, frictionless Goal Selector allows the user to isolate a single Goal. 
 * **Dynamic UI Updates:** Selecting a specific goal filters the screen to show only the `Week_Goal_Items` and `Habits` associated with that goal, alongside a persistent, ambient warning indicator for any `Linked Bad Habits` threatening that specific objective.
 
-### 2.3 The Weekly Habit Roster (Action Layer)
+### 2.3 The Weekly Habit Roster (Action Layer) (Done)
 * **Interactive Habit Modules:** For the actively viewed week and selected goal(s), the screen renders the necessary micro-actions as distinct UI cards.
 * **Progress Visualization:** The core of the card is a visual comparison between the `Completed Values` (aggregated) and the `Target Value` for that week.
 * **Zero-Friction Logging:** Each habit module must include an immediate, inline mechanism allowing the user to append new `Completed Values` to the log.
@@ -257,7 +257,7 @@ The engine logically divides the calendar week into two distinct blocks: First P
 ## 4. Additional Interactions from the Interaction Hub
 
 ### 4.1 Main Screen Interactions
-#### 4.1.1 Manually Launching the Bad Habits Survey
+#### 4.1.1 Manually Launching the Bad Habits Survey (Done)
 * Accessible from the top-level Interaction Hub for users who skipped it during onboarding. Completing it instantly credits the user with **1 Bonus "Life Happens Shield"** and applies the Cap Bypass Rule. Once processed, the action vanishes permanently.
 
 ### 4.2 Goal Level Interactions
@@ -280,7 +280,7 @@ The user triggers an explicit "Overwhelmed" action for a specific goal.
 * **Trigger:** Available only for the Current Week and only if the current week GP is exactly 100%. 
 * **Execution:** User inputs a text constraint. AI generates a habit flagged as `Moment Burst Quest`. This habit awards XP and SP but is explicitly excluded from the Goal Progression (GP) mathematical average.
 
-#### 4.3.2 System Pause Mechanisms
+#### 4.3.2 System Pause Mechanisms (Done)
 * **Hibernate Action (Proactive Pause):** The target week has *not yet started*. User inputs a reason; week is safely suspended without penalty.
 * **Emergency Freeze Action (Reactive Pause):** The target week has *already started* AND the day is strictly *before Friday*. User inputs an emergency reason; week is frozen, protecting metrics from end-of-week penalty degradation. Costs **1 Life Happens Shield** as a processing fee.
 * **Re-Entry Week:** If a user freezes for 2+ consecutive weeks, the app automatically scales down measurement metrics by 30% for the returning week.

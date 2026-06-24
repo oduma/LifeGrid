@@ -18,10 +18,49 @@
 
     <Grid RowDefinitions="*,Auto">
 
-        <Grid Grid.Row="0" RowDefinitions="*,Auto">
+        <Grid Grid.Row="0" RowDefinitions="Auto,*,Auto">
+
+            <!-- Vice Survey banner — collapses once survey is completed -->
+            <Border
+                Grid.Row="0"
+                IsVisible="{Binding IsViceSurveyBannerVisible}"
+                Margin="16,8,16,0"
+                Padding="12"
+                BackgroundColor="{StaticResource Secondary}"
+                StrokeShape="RoundRectangle 2"
+                StrokeThickness="1"
+                Stroke="{StaticResource Error}">
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Command="{Binding LaunchViceSurveyCommand}" />
+                </Border.GestureRecognizers>
+                <Grid ColumnDefinitions="Auto,*">
+                    <Label
+                        Grid.Column="0"
+                        Text="&#xe002;"
+                        FontFamily="MaterialSymbolsRounded"
+                        FontSize="20"
+                        TextColor="{StaticResource OnSecondary}"
+                        VerticalOptions="Center"
+                        Margin="0,0,8,0" />
+                    <VerticalStackLayout Grid.Column="1" Spacing="2">
+                        <Label
+                            Text="DETECT HIDDEN VICES"
+                            FontFamily="{StaticResource FontShareTechMono}"
+                            FontSize="13"
+                            FontAttributes="Bold"
+                            TextColor="{StaticResource OnSecondary}" />
+                        <Label
+                            Text="Complete the bad habits survey to earn 1 Bonus Shield"
+                            FontFamily="{StaticResource FontShareTechMono}"
+                            FontSize="10"
+                            TextColor="{StaticResource OnSecondary}"
+                            Opacity="0.7" />
+                    </VerticalStackLayout>
+                </Grid>
+            </Border>
 
             <CollectionView
-                Grid.Row="0"
+                Grid.Row="1"
                 ItemsSource="{Binding Goals}">
 
                 <CollectionView.EmptyView>
@@ -194,7 +233,7 @@
             </CollectionView>
 
             <!-- Bottom action row: toggles between Standard and MultiSelect modes -->
-            <Grid Grid.Row="1" Margin="16,8">
+            <Grid Grid.Row="2" Margin="16,8">
 
                 <!-- Standard mode: Add Goal -->
                 <Button

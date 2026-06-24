@@ -206,4 +206,43 @@ public sealed class LogHabitProgressCommandTests
         result.IsSuccess.Should().BeTrue();
         weekGoal.GoalWeeklyGp.Should().BeGreaterThan(0);
     }
+
+    // ── re-entry week scaling ─────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ReEntryWeek_EffectiveTargetReducedToSeventyPercent()
+    {
+        // Arrange: habit target = 10.0; re-entry effective target = ceil(10 * 0.7) = 7.
+        // Logging 7.0 on a normal week gives < 100% GP.
+        // Logging 7.0 on a re-entry week should give 100% GP (exact effective target met).
+        const double storedTarget = 10.0;
+        const double loggedValue  = 7.0;
+
+        var habitId    = Guid.NewGuid();
+        var weekGoalId = Guid.NewGuid();
+        var habit      = HabitEntity.Create(
+            weekGoalId, LifeGrid.Domain.Habit.HabitType.Planned,
+            "Run 7k", "Reduced target for re-entry", storedTarget, "km",
+            new DateTime(2026, 6, 27, 0, 0, 0, DateTimeKind.Utc));
+
+        var reEntryWeek = WeekEntity.Create(2, new DateTime(2026, 6, 16, 0, 0, 0, DateTimeKind.Utc));
+        reEntryWeek.MarkAsReEntry();
+
+        var weekGoal = WeekGoalEntity.Create(reEntryWeek.WeekId, Guid.NewGuid(), 1);
+
+        _habitRepo.GetByIdAsync(habitId, Arg.Any<CancellationToken>()).Returns(habit);
+        _weekRepo.GetWeekGoalByIdAsync(weekGoalId, Arg.Any<CancellationToken>()).Returns(weekGoal);
+        _weekRepo.GetByIdAsync(reEntryWeek.WeekId, Arg.Any<CancellationToken>()).Returns(reEntryWeek);
+        _habitRepo.GetCompletionSummariesForWeekGoalAsync(weekGoalId, Arg.Any<CancellationToken>())
+            .Returns(new List<HabitCompletionSummaryDto>
+            {
+                new(habitId, storedTarget, 0.0, LifeGrid.Domain.Habit.HabitType.Planned)
+            });
+
+        await _handler.Handle(
+            new LogHabitProgressCommand(habitId, loggedValue, "km", null, null), default);
+
+        // With effectiveTarget = 7.0 and totalActual = 7.0, GP should be 100
+        weekGoal.GoalWeeklyGp.Should().BeApproximately(100.0, precision: 0.1);
+    }
 }

@@ -18,6 +18,8 @@ internal sealed class WeekConfiguration : IEntityTypeConfiguration<Week>
                .HasConversion<string>()
                .HasMaxLength(30);
 
+        builder.Property(w => w.IsReEntryWeek);
+
         builder.HasMany(w => w.WeekGoals)
                .WithOne()
                .HasForeignKey(wg => wg.WeekId)

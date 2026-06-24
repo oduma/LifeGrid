@@ -7,9 +7,9 @@ This document specifies the structural and technical requirements for Phase 24. 
 
 ## 1. External Reference Mapping
 Claude Code must parse visual and functional constraints directly from the master repository definitions:
-* **Functional Logic:** `functional-requirements.md` (Section 4.1.1 for Vice Survey, Section 4.3.2 for Pause Actions).
+* **Functional Logic:** `docs\specs\functional-requirements.md` (Section 4.1.1 for Vice Survey, Section 4.3.2 for Pause Actions).
 * **Existing Architectures:** Phase 9 (Vice Survey Pipeline) and Phase 13 (Timeline View).
-* **Data Schema:** `data-structure.json` (`UserProfile.IsViceSurveyCompleted`, `Week.Status`).
+* **Data Schema:** `docs\specs\data-structure.json` (`UserProfile.IsViceSurveyCompleted`, `Week.Status`).
 
 ---
 
@@ -41,7 +41,7 @@ Claude Code must parse visual and functional constraints directly from the maste
 * **Action Menu:** Expose two distinct pause actions:
   * `"Hibernate Week"` (Planned pause)
   * `"Freeze Week"` (Emergency pause)
-* **Visual State Update:** Upon executing either command, the UI must asynchronously refresh via `INotifyPropertyChanged`. The `Status` indicator in the top right of the Week Card (Zone A) must instantly change from `Active` to `Hibernated` or `Frozen`, utilizing distinct warning/muted color tokens from `style-guide.md` to visually differentiate paused weeks from active ones.
+* **Visual State Update:** Upon executing either command, the UI must asynchronously refresh via `INotifyPropertyChanged`. The `Status` indicator in the top right of the Week Card (Zone A) must instantly change from `Active` to `Hibernated` or `Frozen`, utilizing distinct warning/muted color tokens from `docs\specs\style-guide.md` to visually differentiate paused weeks from active ones.
 
 ---
 
