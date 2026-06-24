@@ -16,7 +16,8 @@ internal sealed class FactoryResetService(LifeGridDbContext db) : IFactoryResetS
         await db.Database.ExecuteSqlRawAsync("DELETE FROM Goals",                   ct);
         await db.Database.ExecuteSqlRawAsync("DELETE FROM UserEconomy",             ct);
         await db.Database.ExecuteSqlRawAsync("DELETE FROM UserActiveStates",        ct);
-        await db.Database.ExecuteSqlRawAsync("DELETE FROM UserBadges",              ct);
+        await db.Database.ExecuteSqlRawAsync("DELETE FROM Badges",                  ct);
+        await db.Database.ExecuteSqlRawAsync("DELETE FROM LoginHistory",            ct);
         await db.Database.ExecuteSqlRawAsync("DELETE FROM UserProfiles",            ct);
         await db.Database.ExecuteSqlRawAsync("DELETE FROM OnboardingProgressCache", ct);
     }

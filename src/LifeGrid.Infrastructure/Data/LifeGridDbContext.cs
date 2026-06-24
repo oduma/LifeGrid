@@ -1,4 +1,5 @@
 using LifeGrid.Application.Common;
+using LifeGrid.Domain.Badge;
 using LifeGrid.Domain.Goal;
 using LifeGrid.Domain.Habit;
 using LifeGrid.Domain.Onboarding;
@@ -14,6 +15,8 @@ public sealed class LifeGridDbContext(DbContextOptions<LifeGridDbContext> option
 {
     public DbSet<OnboardingSession> OnboardingSessions  => Set<OnboardingSession>();
     public DbSet<UserProfile>       UserProfiles        => Set<UserProfile>();
+    public DbSet<Badge>             Badges              => Set<Badge>();
+    public DbSet<LoginHistory>      LoginHistory        => Set<LoginHistory>();
     public DbSet<Goal>              Goals               => Set<Goal>();
     public DbSet<Week>              Weeks               => Set<Week>();
     public DbSet<WeekGoal>          WeekGoals           => Set<WeekGoal>();

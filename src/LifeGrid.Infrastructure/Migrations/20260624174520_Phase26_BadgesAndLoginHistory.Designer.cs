@@ -3,6 +3,7 @@ using System;
 using LifeGrid.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace LifeGrid.Infrastructure.Migrations
 {
     [DbContext(typeof(LifeGridDbContext))]
-    partial class LifeGridDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260624174520_Phase26_BadgesAndLoginHistory")]
+    partial class Phase26_BadgesAndLoginHistory
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.9");

@@ -58,4 +58,10 @@ internal sealed class HabitRepository(LifeGridDbContext db) : IHabitRepository
                     .Sum(l => (double?)l.ActualValue) ?? 0.0,
                 h.HabitType))
             .ToListAsync(ct);
+
+    public Task<bool> HasCompletionLogsInRangeAsync(
+        DateTime startUtcInclusive, DateTime endUtcExclusive, CancellationToken ct = default)
+        => db.CompletedValueLogs
+            .AnyAsync(log => log.Timestamp >= startUtcInclusive
+                          && log.Timestamp <  endUtcExclusive, ct);
 }

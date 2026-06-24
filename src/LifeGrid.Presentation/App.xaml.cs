@@ -1,3 +1,5 @@
+using LifeGrid.Application.Badge;
+using LifeGrid.Application.Common;
 using LifeGrid.Application.Goal;
 using LifeGrid.Application.Onboarding.Queries;
 using LifeGrid.Application.UserProfile.Queries;
@@ -15,13 +17,15 @@ public partial class App
     private readonly IApiCredentialSyncService _credentialSync;
     private readonly AppShellViewModel         _appShellViewModel;
     private readonly HudViewModel              _hudViewModel;
+    private readonly IToastNotificationService _toastService;
 
     public App(
         IServiceProvider          services,
         IMediator                 mediator,
         IApiCredentialSyncService credentialSync,
         AppShellViewModel         appShellViewModel,
-        HudViewModel              hudViewModel)
+        HudViewModel              hudViewModel,
+        IToastNotificationService toastService)
     {
         InitializeComponent();
         UserAppTheme       = AppTheme.Light;
@@ -30,6 +34,7 @@ public partial class App
         _credentialSync    = credentialSync;
         _appShellViewModel = appShellViewModel;
         _hudViewModel      = hudViewModel;
+        _toastService      = toastService;
     }
 
     protected override Window CreateWindow(IActivationState? activationState)
@@ -41,6 +46,8 @@ public partial class App
         await _credentialSync.SyncAsync();
         await _mediator.Send(new GetOrCreateUserProfileQuery());
 
+        var loginResult = await _mediator.Send(new RecordLoginCommand());
+
         // Returning user: active goals already exist — enable tabs and open Goals
         var countResult = await _mediator.Send(new GetActiveGoalCountQuery());
         if (countResult.IsSuccess && countResult.Value > 0)
@@ -48,6 +55,8 @@ public partial class App
             _appShellViewModel.SetOnboardingComplete();
             await _hudViewModel.LoadAsync();
             await Shell.Current.GoToAsync("//home");
+            if (loginResult.IsSuccess && loginResult.Value?.Any() == true)
+                await _toastService.ShowBadgesEarnedAsync(loginResult.Value);
             return;
         }
 
@@ -56,5 +65,8 @@ public partial class App
         var sessionResult = await _mediator.Send(new GetOrCreateOnboardingSessionQuery());
         if (sessionResult.IsSuccess)
             await Shell.Current.GoToAsync("create-goal");
+
+        if (loginResult.IsSuccess && loginResult.Value?.Any() == true)
+            await _toastService.ShowBadgesEarnedAsync(loginResult.Value);
     }
 }

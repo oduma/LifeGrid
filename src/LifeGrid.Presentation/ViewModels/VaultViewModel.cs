@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using LifeGrid.Application.Badge;
+using LifeGrid.Domain.Badge;
 using MediatR;
 using System.Collections.ObjectModel;
 
@@ -38,9 +39,15 @@ public partial class VaultViewModel : ObservableObject
             Badges.Add(new VaultBadgeItem
             {
                 IconGlyph   = dto.IconName,
-                Title       = dto.BadgeType,
+                Title       = dto.BadgeName,
                 Description = dto.Description,
-                DateEarned  = dto.DateEarned
+                DateEarned  = dto.DateEarned ?? DateTime.MinValue,
+                TierColor   = dto.Tier switch
+                {
+                    BadgeTier.Gold   => Color.FromArgb("#FFC300"),
+                    BadgeTier.Silver => Color.FromArgb("#9CA3AF"),
+                    _                => Color.FromArgb("#D47A43")
+                }
             });
     }
 }

@@ -277,8 +277,9 @@ The user triggers an explicit "Overwhelmed" action for a specific goal.
 ### 4.3 Week Level Interactions
 
 #### 4.3.1 The "I Want More" Quest System (Moment Burst Quests)
-* **Trigger:** Available only for the Current Week and only if the current week GP is exactly 100%. 
-* **Execution:** User inputs a text constraint. AI generates a habit flagged as `Moment Burst Quest`. This habit awards XP and SP but is explicitly excluded from the Goal Progression (GP) mathematical average.
+* **Trigger:** Available only for the Current Week and only for the week goals with GP is at least 100%. 
+* **Execution:** User inputs a text explaining what he wants. AI generates a habit flagged as `Moment Burst Quest`. This habit awards triple XP and triple SP but is explicitly excluded from the Goal Progression (GP) mathematical average.
+* **Prompt:** <file path="docs\specs\assets\prompts\prompt5.txt">
 
 #### 4.3.2 System Pause Mechanisms (Done)
 * **Hibernate Action (Proactive Pause):** The target week has *not yet started*. User inputs a reason; week is safely suspended without penalty.

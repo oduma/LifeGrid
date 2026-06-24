@@ -1,12 +1,12 @@
-using LifeGrid.Domain.UserProfile;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using UserProfileEntity = LifeGrid.Domain.UserProfile.UserProfile;
 
 namespace LifeGrid.Infrastructure.Data.EntityConfigurations;
 
-public sealed class UserProfileConfiguration : IEntityTypeConfiguration<UserProfile>
+public sealed class UserProfileConfiguration : IEntityTypeConfiguration<UserProfileEntity>
 {
-    public void Configure(EntityTypeBuilder<UserProfile> builder)
+    public void Configure(EntityTypeBuilder<UserProfileEntity> builder)
     {
         builder.ToTable("UserProfiles");
         builder.HasKey(e => e.UserId);
@@ -31,16 +31,5 @@ public sealed class UserProfileConfiguration : IEntityTypeConfiguration<UserProf
             states.Property(e => e.DoubleXpExpiry);
         });
 
-        builder.OwnsMany(e => e.Badges, badge =>
-        {
-            badge.ToTable("UserBadges");
-            badge.WithOwner().HasForeignKey("UserId");
-            badge.HasKey(b => b.BadgeId);
-            badge.Property(b => b.BadgeId).ValueGeneratedNever();
-            badge.Property(b => b.BadgeType).HasMaxLength(100);
-            badge.Property(b => b.Description).HasMaxLength(2000);
-            badge.Property(b => b.IconName).HasMaxLength(200);
-            badge.Property(b => b.DateEarned);
-        });
     }
 }

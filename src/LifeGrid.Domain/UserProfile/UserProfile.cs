@@ -4,7 +4,6 @@ namespace LifeGrid.Domain.UserProfile;
 
 public sealed class UserProfile
 {
-    private readonly List<UserBadge> _badges = new();
     private UserProfile() { }
 
     public static UserProfile Create() => new()
@@ -15,12 +14,11 @@ public sealed class UserProfile
         ActiveStates = UserActiveStates.CreateDefault()
     };
 
-    public Guid                           UserId                 { get; private set; }
-    public int                            CurrentLevel           { get; private set; }
-    public UserEconomy                    Economy                { get; private set; } = null!;
-    public UserActiveStates               ActiveStates           { get; private set; } = null!;
-    public bool                           IsViceSurveyCompleted  { get; private set; }
-    public IReadOnlyCollection<UserBadge> Badges                 => _badges.AsReadOnly();
+    public Guid             UserId                { get; private set; }
+    public int              CurrentLevel          { get; private set; }
+    public UserEconomy      Economy               { get; private set; } = null!;
+    public UserActiveStates ActiveStates          { get; private set; } = null!;
+    public bool             IsViceSurveyCompleted { get; private set; }
 
     public void GrantXp(int amount)  => Economy.GrantXp(amount);
     public void DeductXp(int amount) => Economy.DeductXp(amount);
@@ -46,6 +44,4 @@ public sealed class UserProfile
 
     public bool ConsumeShield() => Economy.ConsumeShield();
 
-    public void AwardBadge(string badgeType, string description, string iconName, DateTime dateEarned)
-        => _badges.Add(UserBadge.Create(badgeType, description, iconName, dateEarned));
 }

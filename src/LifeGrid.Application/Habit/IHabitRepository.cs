@@ -14,4 +14,7 @@ public interface IHabitRepository
     Task AddCompletionLogAsync(CompletedValueLog log, CancellationToken ct = default);
     Task<IReadOnlyList<HabitCompletionSummaryDto>> GetCompletionSummariesForWeekGoalAsync(
         Guid weekGoalId, CancellationToken ct = default);
+
+    Task<bool> HasCompletionLogsInRangeAsync(
+        DateTime startUtcInclusive, DateTime endUtcExclusive, CancellationToken ct = default);
 }

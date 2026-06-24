@@ -4406,3 +4406,174 @@ builder.Services.AddTransient<VaultPage>();
 **P25.8 — DataTemplate namespace prefix:** Plan used `xmlns:viewmodels` + `x:DataType="viewmodels:VaultBadgeItem"` but the established project convention (used in GoalsPage) is `xmlns:vm` + `x:DataType="vm:VaultBadgeItem"`. Corrected to match the project standard.
 
 **P25.11 — Build warning baseline:** The "0 warnings" acceptance criterion is aspirational; actual build produces 12 pre-existing warnings introduced before Phase 25. Phase 25 adds no new warnings.
+
+---
+
+## Phase 26 — Showing Up: Daily Login Streaks & Badge Logic
+
+### P26.1 — Feature Purpose
+
+Phase 26 implements the "Showing Up" gamification layer: tracking every app launch via a `LoginHistory` table, evaluating weekly login + habit-recording patterns, awarding tiered "Mr. Consistency" badges (Bronze / Silver / Gold), and surfacing a non-intrusive toast notification when a new badge is earned at startup.
+
+This phase also refactors the badge storage from Phase 25's `UserBadge` owned-entity pattern to a new standalone `Badge` table with:
+- A foreign key to `UserProfile`
+- Nullable future FKs to `Goal` and `Week`
+- An `IsEarned` boolean flag to support future pre-generation of unearned badge records
+
+### P26.2 — Login Tracking (`LoginHistory` Table)
+
+A `LoginHistory` table is created in SQLite to record every successful app launch:
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `Id` | `Guid` | PK, non-generated |
+| `UserId` | `Guid` | FK → `UserProfiles` |
+| `Timestamp` | `DateTime` | UTC |
+
+On every app startup, a new `LoginHistory` row is inserted before any badge evaluation runs.
+
+### P26.3 — Standalone `Badges` Table (Replaces `UserBadges`)
+
+Phase 25's `UserBadge` owned entity and `UserBadges` table are retired. A new standalone `Badges` table is introduced:
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `BadgeId` | `Guid` | PK, non-generated |
+| `UserId` | `Guid` | FK → `UserProfiles` (NOT NULL) |
+| `GoalId` | `Guid?` | FK → `Goals` (nullable, reserved for future use) |
+| `WeekId` | `Guid?` | FK → `Weeks` (nullable, reserved for future use) |
+| `BadgeType` | `string` | e.g., `"Showing_Up_Bronze"` |
+| `BadgeName` | `string` | Human-readable name, e.g., `"Mr. Consistency (Bronze)"` |
+| `Description` | `string` | Caption text, e.g., `"Logged in every day. Achieved: 24 Jun 2026"` |
+| `IconName` | `string` | Material Symbol glyph for the `event_available` icon |
+| `Tier` | `string` | `"Bronze"`, `"Silver"`, or `"Gold"` |
+| `IsEarned` | `bool` | `true` when the badge has been awarded; `false` for pre-generated future badges |
+| `DateEarned` | `DateTime?` | UTC timestamp of award; `null` when `IsEarned = false` |
+
+The EF migration for this phase:
+- Drops `UserBadges`
+- Creates `Badges`
+
+`UserProfile` loses its `_badges` list, `Badges` property, and `AwardBadge()` method. `UserBadge.cs` is deleted.
+
+### P26.4 — Weekly Pattern Evaluation Algorithm
+
+The `ConsistencyBadgeEvaluator` (Application-layer service implementing `IConsistencyBadgeEvaluator`) evaluates badge eligibility on every startup. The algorithm:
+
+1. Load all login timestamps for the current user from `LoginHistory`.
+2. Identify every complete calendar week (Monday–Sunday, inclusive) where the user had at least one login record on all 7 days. Use UTC dates; a "day" is determined by the `Date` component of the UTC timestamp.
+3. For each qualifying 7-day week, query `CompletedValueLog` timestamps that fall within that week:
+   - `hasMonWedLogs`: any log with `Timestamp.Date` on Mon, Tue, or Wed of that week.
+   - `hasThuSunLogs`: any log with `Timestamp.Date` on Thu, Fri, Sat, or Sun of that week.
+4. Determine the tier for that week:
+   - **Bronze** — `!hasMonWedLogs && !hasThuSunLogs`
+   - **Silver** — `hasThuSunLogs && !hasMonWedLogs`
+   - **Gold** — `hasMonWedLogs` (regardless of Thu–Sun)
+5. Load existing earned badges (all tiers already awarded to this user).
+6. For each qualifying week tier, if that tier is not yet earned → create and persist a new `Badge` record (`IsEarned = true`, `DateEarned = Sunday 23:59:59 UTC of that week`).
+7. Return all newly created `Badge` records as `BadgeDto` objects.
+
+The evaluator continues past the first qualifying week, so multiple tiers can be awarded in a single run (cumulative / simultaneous award handling).
+
+### P26.5 — "Showing Up" Badge Definitions
+
+| Tier | `BadgeType` | `BadgeName` | Description template |
+|------|-------------|-------------|----------------------|
+| Bronze | `Showing_Up_Bronze` | `Mr. Consistency (Bronze)` | `"Logged in every day. Achieved: {dd MMM yyyy}"` |
+| Silver | `Showing_Up_Silver` | `Mr. Consistency (Silver)` | `"Logged in every day, habits on schedule. Achieved: {dd MMM yyyy}"` |
+| Gold | `Showing_Up_Gold` | `Mr. Consistency (Gold)` | `"Logged in every day, first-half habits done. Achieved: {dd MMM yyyy}"` |
+
+The `IconName` for all three tiers is the `event_available` Material Symbols Rounded glyph.
+
+Color tokens (from `style-guide.md §2.1`):
+- Bronze: `#D47A43`
+- Silver: `#9CA3AF`
+- Gold: `#FFC300`
+
+### P26.6 — Once-in-a-Lifetime Constraint
+
+Before persisting a new badge, the evaluator queries `IBadgeRepository.GetEarnedByUserIdAsync(userId)` and skips any tier already present in the result. Each tier is awarded at most once per user, ever.
+
+### P26.7 — Simultaneous Award Handling
+
+All qualifying tiers found across all unevaluated complete weeks are persisted within a single `UnitOfWork.SaveChangesAsync()` call (atomic transaction). If the DB write fails, no badge rows are committed and the login record for this startup is not lost (login insert is committed separately before evaluation begins).
+
+### P26.8 — Startup Integration: `RecordLoginCommand`
+
+In `App.OnStart()`, after `GetOrCreateUserProfileQuery` resolves:
+
+```csharp
+var loginResult = await _mediator.Send(new RecordLoginCommand());
+if (loginResult.IsSuccess && loginResult.Value?.Any() == true)
+    await _toastNotificationService.ShowBadgesEarnedAsync(loginResult.Value);
+```
+
+`RecordLoginCommand` returns `Result<IReadOnlyCollection<BadgeDto>>` — the list of newly earned badges (empty when none are awarded).
+
+The startup notification fires after `Shell.Current.GoToAsync("//home")` so the main dashboard is visible before the toast appears.
+
+### P26.9 — Badge Unlock Notification (Toast)
+
+An `IToastNotificationService` abstraction in the Application layer with a `MauiToastNotificationService` implementation in Presentation.
+
+For Phase 26 the implementation uses `Application.Current.MainPage.DisplayAlert` (modal). One alert per badge earned:
+
+- Title: `"Badge Unlocked!"`
+- Message: `"{BadgeName} — {Description}"`
+- Button: `"Nice!"`
+
+The interface is designed so a future phase can replace `DisplayAlert` with a non-blocking CommunityToolkit.Maui `Toast` without changing the command handler or `App.OnStart()`.
+
+### P26.10 — Vault Update: Tier Colors
+
+`VaultBadgeItem` gains a `TierColor` property (`Color` type). `VaultViewModel.LoadAsync()` maps `BadgeTier → Color` using the style-guide tokens:
+
+```csharp
+TierColor = dto.Tier switch
+{
+    BadgeTier.Gold   => Color.FromArgb("#FFC300"),
+    BadgeTier.Silver => Color.FromArgb("#9CA3AF"),
+    _                => Color.FromArgb("#D47A43")
+}
+```
+
+`VaultPage.xaml` binds the badge icon `TextColor` to `{Binding TierColor}` instead of the static `{StaticResource Primary}`.
+
+### P26.11 — Factory Reset Extension
+
+`FactoryResetService.ResetAsync()` adds two `DELETE` statements (in FK-safe order, before `UserProfiles`):
+
+```sql
+DELETE FROM Badges;
+DELETE FROM LoginHistory;
+```
+
+### P26.12 — Acceptance Criteria
+
+- `dotnet build LifeGrid.slnx` → 0 errors; **9 warnings** (improvement from Phase 25 baseline of 12; zero new warnings introduced by Phase 26).
+- `dotnet test` → all tests pass (baseline 303 − 3 removed + 15 new = **315**).
+- `LoginHistory` table exists in the migrated DB; one row is inserted on every cold app start.
+- A user who has never launched the app earns no badges.
+- A user whose login history contains a full Mon–Sun week with no habit logs earns exactly one Bronze badge on the next startup.
+- Once Bronze is earned, a second qualifying Bronze-tier week does not create a duplicate row in `Badges`.
+- Multiple tiers earned simultaneously are all persisted in a single transaction and each triggers its own toast alert.
+- The Vault grid renders each badge icon in its tier color (Bronze #D47A43, Silver #9CA3AF, Gold #FFC300) instead of the uniform Primary color used in Phase 25.
+- Factory Reset clears `Badges` and `LoginHistory` in addition to all previously cleared tables.
+
+### P26.13 — Implementation Notes (Post-Approval Corrections)
+
+**P26.12 — Test count:** Plan acceptance criteria stated `303 − 3 + 13 = 313`. Actual result is **315** (Domain: 97, Application: 151, Infrastructure: 67). The discrepancy was in the Application layer: plan table correctly showed +11, but the summary text used +13 (typo). Actual new tests: Domain +3 / −3 = 0 net; Application +11 net; Infrastructure +1 net → **+12 total**.
+
+**P26.12 — Build warning baseline:** Plan stated "warning count unchanged from Phase 25 baseline (12)". Actual build produces **9 warnings** — an improvement. Phase 26 introduced no new warnings; the reduction (12→9) results from retiring the `UserBadge` owned-entity code which carried some obsolete-API surface.
+
+**P26.2 — `IUnitOfWork` method name:** Plan code used `unitOfWork.SaveChangesAsync()`. The actual `IUnitOfWork` interface exposes `CommitAsync()`. Corrected in `ConsistencyBadgeEvaluator` and `RecordLoginCommandHandler`.
+
+**P26.3 — DI registration location for badge/login-history repositories:** Plan registered `IBadgeRepository` and `ILoginHistoryRepository` directly in `MauiProgram.cs`. Because `BadgeRepository` and `LoginHistoryRepository` are `internal sealed`, they must be registered inside the Infrastructure project. Moved to `InfrastructureServiceExtensions.AddInfrastructure()`. `MauiProgram.cs` retains only `IConsistencyBadgeEvaluator` and `IToastNotificationService` registrations (both are Application/Presentation layer types with public implementations).
+
+**P26.8 — `Application.Current` namespace collision in `MauiToastNotificationService`:** `LifeGrid.Application` is in scope inside the Presentation project, causing `Application.Current` to resolve to the wrong namespace. Fixed with a top-of-file alias: `using MauiApplication = Microsoft.Maui.Controls.Application;`.
+
+**P26.5 / Test dates — Monday must be an actual Monday:** `ConsistencyBadgeEvaluatorTests` initially set `Monday = new DateTime(2026, 6, 16)` which is a **Tuesday**. The 7-day login check in `GetCompletedWeekMondays` walks back to the real Monday (June 15), so June 15 is required in `loginDays` but was absent — causing all four weekly-pattern tests to return 0 badges. Corrected to `Monday = new DateTime(2026, 6, 15)` (actual Monday) and `week2Monday = new DateTime(2026, 6, 8)`.
+
+**P26.5 — Badge type alias required in test files:** Test files whose namespace contains `*.Badge` (e.g., `LifeGrid.Domain.Tests.Badge`) shadow `LifeGrid.Domain.Badge.Badge`, making `Badge.CreateEarned` unresolvable. Fixed with `using BadgeEntity = LifeGrid.Domain.Badge.Badge;` in `BadgeTests.cs`, `BadgePersistenceTests.cs`, and `UserProfileSchemaTests.cs`.
+
+**P26.3 — `UserProfileSchemaTests` test replaced:** The existing Infrastructure schema test `UserProfile_Badges_CanBeWrittenAndReadBack` directly inserted into the old `UserBadges` table and accessed `UserProfile.Badges`. Both no longer exist. Test replaced with `Badges_CanBeWrittenAndReadBack` which seeds via `BadgeRepository` and asserts against the new `Badges` table.

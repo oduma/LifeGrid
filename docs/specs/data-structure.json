@@ -14,15 +14,29 @@
       "Double_XP_Expiry": "DateTime"
     },
     "Is_Vice_Survey_Completed": "Boolean // Phase 9: single-use lifecycle flag; true after Hidden Vices survey is submitted and persisted",
-    "Trophy_Room_Badges": [
-      {
-        "BadgeID": "Guid",
-        "Badge_Type": "String (e.g., Showing_Up_Gold, Momentum_Overachiever)",
-        "Icon_Name": "String // Phase 25: Material Symbol Unicode glyph (e.g., '\\uF6A0') stored at award time; rendered via MaterialSymbolsRounded font in the Vault grid",
-        "Description": "String",
-        "Date_Earned": "DateTime"
-      }
-    ]
+    "Trophy_Room_Badges": "// Phase 25 UserBadges owned-entity removed in Phase 26. See top-level Badges table."
+  },
+
+  "Badges": {
+    "_note": "Phase 26: standalone table; replaces Phase 25 UserBadges owned entity. FK to User_Profile (mandatory); nullable FKs to Goal and Week reserved for future badge types.",
+    "BadgeID": "Guid // PK",
+    "UserID": "Guid // FK → User_Profile (NOT NULL)",
+    "GoalID": "Guid? // FK → Goal (nullable; reserved for future goal-linked badges)",
+    "WeekID": "Guid? // FK → Week (nullable; reserved for future week-linked badges)",
+    "Badge_Type": "String // e.g., 'Showing_Up_Bronze', 'Showing_Up_Silver', 'Showing_Up_Gold'",
+    "Badge_Name": "String // Human-readable display name, e.g., 'Mr. Consistency (Bronze)'",
+    "Description": "String // Caption shown in Vault, e.g., 'Logged in every day. Achieved: 24 Jun 2026'",
+    "Icon_Name": "String // Material Symbol glyph stored at award time; rendered via MaterialSymbolsRounded font",
+    "Tier": "String // 'Bronze' | 'Silver' | 'Gold'",
+    "Is_Earned": "Boolean // true = badge awarded; false = pre-generated potential badge (future use)",
+    "Date_Earned": "DateTime? // UTC timestamp of award; null when Is_Earned = false"
+  },
+
+  "LoginHistory": {
+    "_note": "Phase 26: records every successful app launch. Used by ConsistencyBadgeEvaluator to detect 7-day login weeks.",
+    "ID": "Guid // PK",
+    "UserID": "Guid // FK → User_Profile",
+    "Timestamp": "DateTime // UTC"
   },
 
   "Goal": {

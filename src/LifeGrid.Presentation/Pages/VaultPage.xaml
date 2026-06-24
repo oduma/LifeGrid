@@ -44,7 +44,7 @@
                                     Text="{Binding IconGlyph}"
                                     FontFamily="MaterialSymbolsRounded"
                                     FontSize="48"
-                                    TextColor="{StaticResource Primary}"
+                                    TextColor="{Binding TierColor}"
                                     HorizontalOptions="Center"
                                     HorizontalTextAlignment="Center" />
                                 <Label

@@ -52,13 +52,6 @@ public sealed class UserProfileTests
     }
 
     [Fact]
-    public void Create_HasEmptyBadgesCollection()
-    {
-        var profile = UserProfileEntity.Create();
-        profile.Badges.Should().BeEmpty();
-    }
-
-    [Fact]
     public void GrantBonusShield_IncrementsShieldsAvailable()
     {
         var profile = UserProfileEntity.Create();
@@ -79,20 +72,5 @@ public sealed class UserProfileTests
         profile.GrantBonusShield(); // should be a no-op
 
         profile.Economy.ShieldsAvailable.Should().Be(2);
-    }
-
-    [Fact]
-    public void AwardBadge_AppendsToBadgesCollection()
-    {
-        var profile = UserProfileEntity.Create();
-        var earned  = new DateTime(2026, 6, 24, 0, 0, 0, DateTimeKind.Utc);
-
-        profile.Badges.Should().BeEmpty();
-
-        profile.AwardBadge("Showing_Up_Gold", "Seven-day streak.", "", earned);
-
-        profile.Badges.Should().HaveCount(1);
-        profile.Badges.Single().BadgeType.Should().Be("Showing_Up_Gold");
-        profile.Badges.Single().IconName.Should().Be("");
     }
 }

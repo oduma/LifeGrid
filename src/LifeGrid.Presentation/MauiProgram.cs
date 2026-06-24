@@ -1,3 +1,5 @@
+using LifeGrid.Application.Badge;
+using LifeGrid.Application.Common;
 using LifeGrid.Application.Gamification;
 using LifeGrid.Application.Onboarding.Queries;
 using LifeGrid.Infrastructure.Data;
@@ -58,6 +60,8 @@ public static class MauiProgram
         builder.Services.AddTransient<WeeklyHabitsPage>();
         builder.Services.AddTransient<VaultViewModel>();
         builder.Services.AddTransient<VaultPage>();
+        builder.Services.AddSingleton<IToastNotificationService, MauiToastNotificationService>();
+        builder.Services.AddScoped<IConsistencyBadgeEvaluator, ConsistencyBadgeEvaluator>();
 
 #if DEBUG
         builder.Logging.AddDebug();

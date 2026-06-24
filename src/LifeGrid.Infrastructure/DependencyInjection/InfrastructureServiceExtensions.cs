@@ -1,3 +1,4 @@
+using LifeGrid.Application.Badge;
 using LifeGrid.Application.Common;
 using LifeGrid.Application.Goal;
 using LifeGrid.Application.Habit;
@@ -30,6 +31,8 @@ public static class InfrastructureServiceExtensions
         services.AddScoped<IGoalRepository, GoalRepository>();
         services.AddScoped<IWeekRepository, WeekRepository>();
         services.AddScoped<IHabitRepository, HabitRepository>();
+        services.AddScoped<IBadgeRepository, BadgeRepository>();
+        services.AddScoped<ILoginHistoryRepository, LoginHistoryRepository>();
         services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<LifeGridDbContext>());
 
         services.AddSingleton<ISecureStorageService, SecureStorageService>();
