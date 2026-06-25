@@ -4687,6 +4687,175 @@ No new database tables or columns. `HabitType.MomentBurst` and the `Habits` tabl
 - A Moment Burst habit completion awards 3× XP and 3× SP vs. the same proof tier on a Planned habit.
 - Moment Burst habits remain excluded from the GP calculation (regression-tested by existing `CalculateWeekGoalGp_ExcludesMomentBurstHabits` test).
 
+---
+
+## Phase 28 — Shield Economy Integrity & SP Deficit Mechanics
+
+### P28.1 — Objective
+
+Implement `ShieldEconomyEngine` as the single, authoritative gatekeeper for all `Current_SP` mutations, correcting the existing silent SP-loss bug at maximum shield cap, and introducing the Deep Deficit mechanic (negative SP) required by Section 3.5 (Cheating Deterrent).
+
+### P28.2 — External Reference Mapping
+
+- **Functional Logic:** `docs/specs/functional-requirements.md` §3.5 (Cheating Deterrent & Deficit), §4.3.3 (SP→Shield Conversion & Inventory Cap).
+- **Architecture Rules:** Phase 23 (Economy State Synchronization).
+- **Data Schema:** `docs/specs/data-structure.json` (`UserProfile.Economy`).
+
+### P28.3 — Domain Layer: ShieldEconomyEngine
+
+**New static class** `src/LifeGrid.Domain/Gamification/ShieldEconomyEngine.cs`
+
+```csharp
+namespace LifeGrid.Domain.Gamification;
+
+public static class ShieldEconomyEngine
+{
+    public const int SpConversionThreshold = 30;
+
+    // Pure calculation: apply a positive SP gain, converting milestones to shields
+    // while respecting the max cap. When at max cap, SP is capped at 30 (no conversion,
+    // no accumulation above threshold — protects progress without granting excess shields).
+    public static (int NewCurrentSp, int NewShieldsAvailable) ApplySpGain(
+        int currentSp, int shieldsAvailable, int maxShieldCap, int amount)
+    {
+        var sp = currentSp + amount;
+        while (sp >= SpConversionThreshold && shieldsAvailable < maxShieldCap)
+        {
+            sp -= SpConversionThreshold;
+            shieldsAvailable++;
+        }
+        if (shieldsAvailable >= maxShieldCap && sp > SpConversionThreshold)
+            sp = SpConversionThreshold;
+        return (sp, shieldsAvailable);
+    }
+
+    // Pure calculation: apply a negative SP mutation (cheating penalty).
+    // Result MAY be negative — this is the intentional Deep Deficit state (§3.5).
+    public static int ApplySpDeduction(int currentSp, int amount)
+        => currentSp - amount;
+}
+```
+
+**Key rules:**
+- `ApplySpGain` replaces the existing `GrantSp` while-loop in `UserEconomy`. The old loop incorrectly ran `CurrentSp -= 30` even when `ShieldsAvailable == MaxShieldCap`, silently discarding earned SP. The new logic stops converting and caps at 30 when at max cap.
+- `ApplySpDeduction` allows negative results. A user at `SP = 10` hit by a `-30 SP` cheating penalty ends at `SP = -20` (Deep Deficit). They must log `20 SP` of positive activities to return to 0 before any shield conversion can restart.
+- Both methods are pure (no side effects) and depend only on `LifeGrid.Domain.Gamification`. Zero external dependencies.
+
+### P28.4 — Domain Layer: UserEconomy & UserProfile
+
+**Modify `UserEconomy`:**
+- Refactor `GrantSp(int amount)` to delegate to `ShieldEconomyEngine.ApplySpGain`.
+- Add `internal void DeductSp(int amount)` delegating to `ShieldEconomyEngine.ApplySpDeduction`.
+- Remove `GrantShield()` call from within `GrantSp` (inline the increment, since the new logic must check the cap condition before decrementing SP).
+
+```csharp
+internal void GrantSp(int amount)
+{
+    var (newSp, newShields) = ShieldEconomyEngine.ApplySpGain(
+        CurrentSp, ShieldsAvailable, MaxShieldCap, amount);
+    CurrentSp        = newSp;
+    ShieldsAvailable = newShields;
+}
+
+internal void DeductSp(int amount)
+    => CurrentSp = ShieldEconomyEngine.ApplySpDeduction(CurrentSp, amount);
+```
+
+**Modify `UserProfile`:**
+```csharp
+public void DeductSp(int amount) => Economy.DeductSp(amount);
+```
+
+### P28.5 — Application Layer: Broadcaster Enrichment
+
+**Enrich `EconomyStateMutatedMessage`:**
+```csharp
+// CurrentSp and ShieldsAvailable carry the post-mutation values for SP-changing
+// events. Non-SP broadcasts (e.g., Hibernate) use default (0, 0).
+public record EconomyStateMutatedMessage(int CurrentSp = 0, int ShieldsAvailable = 0);
+```
+
+**Update `IEconomyStateBroadcaster`:**
+```csharp
+public interface IEconomyStateBroadcaster
+{
+    // For structural broadcasts that do not modify SP/shields (e.g., Hibernate).
+    void Broadcast();
+    // For SP-mutating operations; carries post-commit economy state.
+    void BroadcastEconomy(int currentSp, int shieldsAvailable);
+}
+```
+
+**Update `LogHabitProgressCommandHandler`:**  
+Replace `broadcaster.Broadcast()` with `broadcaster.BroadcastEconomy(profile.Economy.CurrentSp, profile.Economy.ShieldsAvailable)` after `CommitAsync`.
+
+**Update `PauseWeekCommandHandler`:**
+- `HibernateAsync`: no SP change — keeps `broadcaster.Broadcast()`.
+- `FreezeAsync`: profile is already loaded and `ConsumeShield()` has run — replace with `broadcaster.BroadcastEconomy(profile.Economy.CurrentSp, profile.Economy.ShieldsAvailable)` after `CommitAsync`.
+
+### P28.6 — Presentation Layer: Broadcaster & HUD
+
+**Update `WeakReferenceMessengerBroadcaster`:**
+```csharp
+public void Broadcast()
+    => WeakReferenceMessenger.Default.Send(new EconomyStateMutatedMessage());
+
+public void BroadcastEconomy(int currentSp, int shieldsAvailable)
+    => WeakReferenceMessenger.Default.Send(new EconomyStateMutatedMessage(currentSp, shieldsAvailable));
+```
+
+**Update `HudViewModel`:** Add observable properties for Deep Deficit state:
+```csharp
+[ObservableProperty] private bool _isInDeepDeficit;
+
+[NotifyPropertyChangedFor(nameof(SpCurrentColor))]
+[ObservableProperty] private bool _isInDeepDeficit;
+
+private static readonly Color NormalSpColor  = Color.FromArgb("#CACACA");
+private static readonly Color DeficitSpColor = Color.FromArgb("#FF1B77");
+public Color SpCurrentColor => IsInDeepDeficit ? DeficitSpColor : NormalSpColor;
+```
+
+Set in `LoadAsync`:
+```csharp
+IsInDeepDeficit = d.CurrentSp < 0;
+```
+
+**Update `HudView.xaml`:** The SP current `Span.TextColor` is bound to `SpCurrentColor`:
+```xaml
+<Span Text="{Binding SpCurrent}"
+      TextColor="{Binding SpCurrentColor}"
+      FontFamily="ShareTechMono" />
+```
+
+### P28.7 — No Schema / Migration Changes
+
+`UserEconomy.CurrentSp` is mapped as SQLite `INTEGER` with no range constraint. Negative integers are valid SQLite values. No EF migration required.
+
+### P28.8 — Acceptance Criteria
+
+- `dotnet build LifeGrid.slnx` → 0 errors, ≤ 15 warnings (all pre-existing).
+- `dotnet test` → all tests pass: baseline 324 + 7 new = **331** (Domain: 106, Application: 157, Infrastructure: 68).
+- Logging a habit to 30 cumulative SP correctly grants 1 Shield; balance resets to `SP - 30`.
+- When at `Max_Shield_Cap`, SP accumulates to exactly 30 and stops (not converted, not lost above 30).
+- A cheating penalty of `-30 SP` on a profile with `SP = 10` results in `SP = -20` (Deep Deficit).
+- A profile at `SP = -20` requires exactly `20 SP` of positive gains to return to `SP = 0`.
+- HUD SP counter displays in `#FF1B77` (error/magenta) color when `SP < 0`.
+- HUD SP counter displays in normal color when `SP >= 0`.
+- No EF migration required; existing `UserEconomy` table schema is unchanged.
+
+### P28.9 — Implementation Notes (Post-Approval Corrections)
+
+**P28.8 — Test count:** Plan stated 324 + 7 = **331** (Domain: 106, Application: 157, Infrastructure: 68). Actual result is **332** (Domain: 107, Application: 157, Infrastructure: 68). `ShieldEconomyEngineTests` contains 7 tests (not 6 as planned), because the recovery test (`ApplySpGain_Recovery_From_Minus20_Requires20SpToReachZero`) was counted as a domain test in the final file, bringing the new domain tests to 7.
+
+**P28.8 — Warning count:** Plan stated "≤ 15 warnings". Actual build produces **14 warnings** — one fewer than prior phases (all pre-existing NU1903/CS0618/CS0612). Zero new warnings introduced by Phase 28.
+
+**Pre-existing test corrections — `UserEconomy_GrantSp_DoesNotExceedShieldCap`:** This test's final assertion expected `CurrentSp.Should().Be(5)` — the old (buggy) behavior where `SP -= 30` ran unconditionally even at max cap, leaving `35 % 30 = 5`. The corrected behavior caps SP at 30 when at max shields. Assertion updated to `CurrentSp.Should().Be(30)` and comment updated accordingly.
+
+**Pre-existing test corrections — `PauseWeekCommandTests.Freeze_CurrentWeek_BeforeFriday_HasShields_Succeeds_ConsumesOneShield`:** This test asserted `_broadcaster.Received(1).Broadcast()`. Since `FreezeAsync` now calls `BroadcastEconomy(int, int)` (not the parameterless `Broadcast()`), the assertion was updated to `_broadcaster.Received(1).BroadcastEconomy(Arg.Any<int>(), Arg.Any<int>())`.
+
+---
+
 ### P27.10 — Implementation Notes (Post-Approval Corrections)
 
 **P27.9 — Test count:** Plan stated 315 + 8 new = **323** (Application: 155). Actual result is **324** (Domain: 100, Application: 156, Infrastructure: 68). One additional regression test was added: `CurrentWeek_WithUnspecifiedKindStartDate_IsRecognisedAsCurrentWeek` covering the SQLite `DateTimeKind` root cause below.

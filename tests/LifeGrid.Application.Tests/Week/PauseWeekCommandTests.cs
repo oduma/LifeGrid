@@ -95,7 +95,7 @@ public sealed class PauseWeekCommandTests
         week.Status.Should().Be(WeekStatus.Frozen);
         profile.Economy.ShieldsAvailable.Should().Be(shieldsBefore - 1);
         await _uow.Received(1).CommitAsync(Arg.Any<CancellationToken>());
-        _broadcaster.Received(1).Broadcast();
+        _broadcaster.Received(1).BroadcastEconomy(Arg.Any<int>(), Arg.Any<int>());
     }
 
     [Fact]

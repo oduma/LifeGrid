@@ -42,7 +42,7 @@ public sealed class PauseWeekCommandHandler(
 
         week.Pause(WeekStatus.Hibernated);
         await unitOfWork.CommitAsync(ct);
-        broadcaster.Broadcast();
+        broadcaster.Broadcast();  // Hibernate does not change SP; structural broadcast only.
         return Result.Success();
     }
 
@@ -73,7 +73,7 @@ public sealed class PauseWeekCommandHandler(
         }
 
         await unitOfWork.CommitAsync(ct);
-        broadcaster.Broadcast();
+        broadcaster.BroadcastEconomy(profile.Economy.CurrentSp, profile.Economy.ShieldsAvailable);
         return Result.Success();
     }
 }

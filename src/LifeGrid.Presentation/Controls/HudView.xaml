@@ -81,7 +81,7 @@
                     <Label.FormattedText>
                         <FormattedString>
                             <Span Text="SP " TextColor="{StaticResource OnSurface}" FontFamily="ShareTechMono" />
-                            <Span Text="{Binding SpCurrent}" TextColor="{StaticResource OnSurface}" FontFamily="ShareTechMono" />
+                            <Span Text="{Binding SpCurrent}" TextColor="{Binding SpCurrentColor}" FontFamily="ShareTechMono" />
                             <Span Text=" / " TextColor="{StaticResource OnSurface}" FontFamily="ShareTechMono" />
                             <Span Text="{Binding SpWeekly}" TextColor="{StaticResource Primary}" FontFamily="ShareTechMono" FontAttributes="Bold" />
                         </FormattedString>

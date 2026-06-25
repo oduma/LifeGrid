@@ -150,11 +150,11 @@ public sealed class GamificationCalculationEngineTests
         profile.Economy.ShieldsAvailable.Should().Be(2);
         profile.Economy.CurrentSp.Should().Be(0);
 
-        // Earn more SP — shields already capped
-        profile.GrantSp(35); // → would grant another shield but capped at 2
+        // Earn more SP — shields already capped; SP is held at 30 (not converted, not lost above threshold)
+        profile.GrantSp(35); // → conversion blocked at max cap; SP capped at 30
 
         profile.Economy.ShieldsAvailable.Should().Be(2);
-        profile.Economy.CurrentSp.Should().Be(5); // 35 % 30 = 5
+        profile.Economy.CurrentSp.Should().Be(30);
     }
 
     // ── MomentBurst triple reward ─────────────────────────────────────────────

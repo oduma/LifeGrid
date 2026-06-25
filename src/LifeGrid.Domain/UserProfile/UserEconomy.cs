@@ -1,3 +1,5 @@
+using LifeGrid.Domain.Gamification;
+
 namespace LifeGrid.Domain.UserProfile;
 
 public sealed class UserEconomy
@@ -36,13 +38,14 @@ public sealed class UserEconomy
 
     internal void GrantSp(int amount)
     {
-        CurrentSp += amount;
-        while (CurrentSp >= 30)
-        {
-            CurrentSp -= 30;
-            GrantShield();
-        }
+        var (newSp, newShields) = ShieldEconomyEngine.ApplySpGain(
+            CurrentSp, ShieldsAvailable, MaxShieldCap, amount);
+        CurrentSp        = newSp;
+        ShieldsAvailable = newShields;
     }
+
+    internal void DeductSp(int amount)
+        => CurrentSp = ShieldEconomyEngine.ApplySpDeduction(CurrentSp, amount);
 
     internal void SetLifetimeGpAverage(double value) => LifetimeGpAverage = value;
 

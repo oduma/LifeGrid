@@ -7,4 +7,7 @@ internal sealed class WeakReferenceMessengerBroadcaster : IEconomyStateBroadcast
 {
     public void Broadcast()
         => WeakReferenceMessenger.Default.Send(new EconomyStateMutatedMessage());
+
+    public void BroadcastEconomy(int currentSp, int shieldsAvailable)
+        => WeakReferenceMessenger.Default.Send(new EconomyStateMutatedMessage(currentSp, shieldsAvailable));
 }

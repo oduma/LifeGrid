@@ -95,7 +95,7 @@ public sealed class LogHabitProgressCommandHandler(
 
         await unitOfWork.CommitAsync(cancellationToken);
 
-        broadcaster.Broadcast();
+        broadcaster.BroadcastEconomy(profile.Economy.CurrentSp, profile.Economy.ShieldsAvailable);
 
         return Result.Success();
     }

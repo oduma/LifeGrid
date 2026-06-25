@@ -301,9 +301,27 @@ The user triggers an explicit "Overwhelmed" action for a specific goal.
 ## 5. End of the Week
 
 ### 5.1 Display the Week Summary
-A read-only dashboard triggered strictly after the chronological end of a given week. 
+A read-only dashboard triggered strictly after the a given week is closed. 
+* At 9 am local time on every Monday the app should send a notification to the user telling him that their previous week has finished and from that notification it should be a link to the previous Week.
+* If the user clicks on the link it should open the application presenting them the detailed view of the previous week with an action on it close the week.
+* The user may enter additional habits completions that he has not logged yet and they can close the week.
+* The calculations for procrastination and other weekly review calculations are going to be tiggered by the action of closing the week.
+* A week closed should be marked from that moment on as Closed in status instead of Active
+* If a user clicks on a week which has been closed before at the top of the week they should see an action go to Week Summary. The page is the page described in this section. 
+* If the user doesn't close the week by the following Wednesday at 9 am the app should trigger automatically the closing of the previous week and a notification should be send to the user informing him about the fact that the previous week has been automatically closed.
+* ** Life Cycle of weeks **
+ For example: 
+    The week: 
+        - Starting on 22nd of June Monday and finisihing on Sunday 28 of June (the week is active)  
+        - Monday 29th of June at 9 AM send the notification to the user that he needs to Close the previous week (the week starting on 22nd of June)
+        - Wednesday 1st of July 9 AM - check if the week started on 22nd of June is already closed by the user
+            - If yes do nothing
+            - If no Close the week started on 22nd of June
+            - Send a notification to the user telling him that the week started on 22nd of June has been automatically closed.
+* This of course should repeat for every single week.
 * Displays Global Metrics Breakdown (XP/SP) and Goal-Specific GP vs Lifetime Average.
 
+#### 5.1.1 The Procrastination & Under-Achievement Escalator
 **The Procrastination & Underachievement Calculator:**
 Upon loading the summary, the engine runs a silent calculation against every individual goal assigned to that week to evaluate completion deficits. Which means calculation against all the habits associated with each of the goal for that week. 
 * *Clean State:* If a habit's target was met or fell within acceptable tolerances (no penalty triggered), the system remains silent and displays no penalty indicators.
@@ -312,7 +330,6 @@ Upon loading the summary, the engine runs a silent calculation against every ind
 **Shield Mitigation (Fix with Shield):**
 If a Level 1 Warning is triggered, the user can expend a "Life Happens Shield" via the **"Fix with Shield"** button to clear it. If not, the user enters the subsequent week carrying this specific warning level for all the habits belonging to that goal.
 
-#### 5.1.1 The Procrastination & Under-Achievement Escalator
 This system monitors user compliance week-by-week using the Goal's Weekly GP via a compounding 3-week probationary structure:
 * **Week 1: The Warning Trigger**
     * *Condition:* At Sunday's rollover, if the goal's weekly GP falls **<= 80%**, a **Level 1 Warning** is issued and anchored to the goal's `Week_Goal_Items`.
@@ -324,11 +341,8 @@ This system monitors user compliance week-by-week using the Goal's Weekly GP via
     * *Condition:* The user enters Week 3 carrying a warning and fails to hit 100% GP for that goal.
     * *Consequence:* **0 XP is awarded** for the entire week. The app automatically updates the parent Goal's `Status` to **Overwhelmed** and locks the app until that specific goal state is resolved.
 
-#### 5.1.2 Automated Procrastination Evaluation (Passive Trigger)
-If the user has not manually opened the Week Summary interface by **17:00 on the first Monday** following the week's chronological end, the system automatically executes the Procrastination Calculator in the background. If a Warning is detected, it dispatches a high-priority push notification forcing the user into the Week Summary interface.
-
 ### 5.2 The "Test me I'm being good" Action (Vice Check)
-* **Trigger:** Available strictly on the Week Summary screen for exactly **72 hours** after the week ends.
+* **Trigger:** Available strictly on the Week Summary screen for exactly **72 hours** after the week ends, and only if the user has taken the Hidden Vices Survey.
 * **Execution:** Initiating the audit grants a flat **+20 XP**. The AI selects one `Linked Bad Habit` associated with that week's active goals and asks 1 targeted, subtle question to see if the user indulged.
 * **Penalty Math:** If the AI determines the user failed, it deducts exactly **1% per Danger Level** of the triggered bad habit retroactively from that week's Goal Progression (GP). 
 

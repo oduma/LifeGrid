@@ -23,7 +23,8 @@ public sealed class UserProfile
     public void GrantXp(int amount)  => Economy.GrantXp(amount);
     public void DeductXp(int amount) => Economy.DeductXp(amount);
 
-    public void GrantSp(int amount) => Economy.GrantSp(amount);
+    public void GrantSp(int amount)  => Economy.GrantSp(amount);
+    public void DeductSp(int amount) => Economy.DeductSp(amount);
 
     public void ApplyXpAndLevelProgression(int xpEarned)
     {

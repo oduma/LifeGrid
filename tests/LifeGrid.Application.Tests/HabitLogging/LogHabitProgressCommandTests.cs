@@ -158,7 +158,7 @@ public sealed class LogHabitProgressCommandTests
             new LogHabitProgressCommand(habitId, 5.0, "km", null, null), default);
 
         result.IsSuccess.Should().BeTrue();
-        _broadcaster.Received(1).Broadcast();
+        _broadcaster.Received(1).BroadcastEconomy(Arg.Any<int>(), Arg.Any<int>());
     }
 
     [Fact]
@@ -244,5 +244,27 @@ public sealed class LogHabitProgressCommandTests
 
         // With effectiveTarget = 7.0 and totalActual = 7.0, GP should be 100
         weekGoal.GoalWeeklyGp.Should().BeApproximately(100.0, precision: 0.1);
+    }
+
+    // ── atomic consistency ────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task CommitFailure_BroadcasterNotCalled()
+    {
+        var habitId = Guid.NewGuid();
+        var habit   = HabitEntity.Create(
+            Guid.NewGuid(), LifeGrid.Domain.Habit.HabitType.Planned,
+            "Run 5k", "Run five kilometres", 5.0, "km",
+            new DateTime(2026, 6, 27, 0, 0, 0, DateTimeKind.Utc));
+
+        _habitRepo.GetByIdAsync(habitId, Arg.Any<CancellationToken>()).Returns(habit);
+        _uow.CommitAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromException(new InvalidOperationException("DB failure")));
+
+        var act = async () => await _handler.Handle(
+            new LogHabitProgressCommand(habitId, 5.0, "km", null, null), default);
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+        _broadcaster.DidNotReceive().BroadcastEconomy(Arg.Any<int>(), Arg.Any<int>());
     }
 }
