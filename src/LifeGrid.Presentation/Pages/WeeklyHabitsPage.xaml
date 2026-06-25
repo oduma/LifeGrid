@@ -120,12 +120,40 @@
                                                 <DataTrigger TargetType="Border" Binding="{Binding IsInteractive}" Value="False">
                                                     <Setter Property="Opacity" Value="0.4" />
                                                 </DataTrigger>
+                                                <DataTrigger TargetType="Border" Binding="{Binding IsMomentBurst}" Value="True">
+                                                    <Setter Property="Stroke"          Value="{StaticResource Primary}" />
+                                                    <Setter Property="StrokeThickness" Value="2" />
+                                                </DataTrigger>
                                             </Border.Triggers>
 
                                             <VerticalStackLayout Spacing="6">
 
-                                                <!-- Habit type + name -->
-                                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
+                                                <!-- Moment Burst header (icon + badge label) -->
+                                                <Grid
+                                                    ColumnDefinitions="Auto,*"
+                                                    ColumnSpacing="6"
+                                                    IsVisible="{Binding IsMomentBurst}">
+                                                    <Label
+                                                        Grid.Column="0"
+                                                        Text="&#xE3B4;"
+                                                        FontFamily="MaterialSymbolsRounded"
+                                                        FontSize="16"
+                                                        TextColor="{StaticResource Primary}"
+                                                        VerticalOptions="Center" />
+                                                    <Label
+                                                        Grid.Column="1"
+                                                        Text="MOMENT BURST"
+                                                        FontFamily="{StaticResource FontShareTechMono}"
+                                                        FontSize="9"
+                                                        TextColor="{StaticResource Primary}"
+                                                        VerticalOptions="Center" />
+                                                </Grid>
+
+                                                <!-- Standard type pill + name (hidden for Moment Burst) -->
+                                                <Grid
+                                                    ColumnDefinitions="Auto,*"
+                                                    ColumnSpacing="6"
+                                                    IsVisible="{Binding IsNotMomentBurst}">
                                                     <Border
                                                         Grid.Column="0"
                                                         Padding="4,2"
@@ -149,6 +177,15 @@
                                                         TextColor="{StaticResource OnSurface}"
                                                         VerticalOptions="Center" />
                                                 </Grid>
+
+                                                <!-- Habit name for Moment Burst (shown below the badge row) -->
+                                                <Label
+                                                    Text="{Binding HabitName}"
+                                                    FontFamily="{StaticResource FontDMMono}"
+                                                    FontSize="14"
+                                                    FontAttributes="Bold"
+                                                    TextColor="{StaticResource OnSurface}"
+                                                    IsVisible="{Binding IsMomentBurst}" />
 
                                                 <!-- Description -->
                                                 <Label
@@ -225,6 +262,39 @@
                                 </BindableLayout.ItemTemplate>
 
                             </VerticalStackLayout>
+
+                            <!-- I Want More — visible when GP ≥ 100% and no MomentBurst habit yet -->
+                            <Grid
+                                ColumnDefinitions="*,28"
+                                Margin="0,4,0,0"
+                                IsVisible="{Binding CanRequestMomentBurst}">
+                                <Button
+                                    Grid.Column="0"
+                                    Padding="10,6"
+                                    Text="I Want More"
+                                    FontFamily="{StaticResource FontShareTechMono}"
+                                    FontSize="12"
+                                    TextColor="{StaticResource Primary}"
+                                    BackgroundColor="Transparent"
+                                    BorderColor="{StaticResource Primary}"
+                                    BorderWidth="1"
+                                    CornerRadius="2"
+                                    IsEnabled="{Binding BindingContext.IsMomentBurstPending,
+                                                Source={x:Reference PageRoot},
+                                                Converter={StaticResource InverseBool}}"
+                                    Command="{Binding BindingContext.IWantMoreCommand,
+                                              Source={x:Reference PageRoot}}"
+                                    CommandParameter="{Binding .}" />
+                                <ActivityIndicator
+                                    Grid.Column="1"
+                                    IsRunning="{Binding BindingContext.IsMomentBurstPending, Source={x:Reference PageRoot}}"
+                                    IsVisible="{Binding BindingContext.IsMomentBurstPending, Source={x:Reference PageRoot}}"
+                                    Color="{StaticResource Primary}"
+                                    WidthRequest="20"
+                                    HeightRequest="20"
+                                    VerticalOptions="Center"
+                                    HorizontalOptions="Center" />
+                            </Grid>
 
                         </VerticalStackLayout>
                     </DataTemplate>

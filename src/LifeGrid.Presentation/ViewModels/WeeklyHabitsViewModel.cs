@@ -1,7 +1,9 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
+using LifeGrid.Application.Common;
 using LifeGrid.Application.Gamification;
+using LifeGrid.Application.MomentBurst;
 using LifeGrid.Application.WeeklyHabits;
 using MediatR;
 using System.Collections.ObjectModel;
@@ -10,27 +12,28 @@ namespace LifeGrid.Presentation.ViewModels;
 
 public partial class WeeklyHabitsViewModel : ObservableObject, IQueryAttributable
 {
-    private readonly IMediator _mediator;
+    private readonly IMediator                 _mediator;
+    private readonly IToastNotificationService _toastService;
 
     private Guid                 _weekId;
     private IReadOnlyList<Guid>? _filterGoalIds;
 
-    public WeeklyHabitsViewModel(IMediator mediator)
+    public WeeklyHabitsViewModel(IMediator mediator, IToastNotificationService toastService)
     {
-        _mediator = mediator;
+        _mediator     = mediator;
+        _toastService = toastService;
         WeakReferenceMessenger.Default.Register<WeeklyHabitsViewModel, EconomyStateMutatedMessage>(this,
-            async (r, _) => await r.LoadAsync());
+            async (r, _) => await MainThread.InvokeOnMainThreadAsync(r.LoadAsync));
     }
 
     [ObservableProperty] private string  _weekHeaderText           = string.Empty;
     [ObservableProperty] private string  _weekStatusText           = string.Empty;
     [ObservableProperty] private string? _proofImageUrl;
     [ObservableProperty] private bool    _isProofImageOverlayVisible;
+    [ObservableProperty] private bool    _isMomentBurstPending;
 
     public ObservableCollection<WeeklyGoalGroupItem> GoalGroups { get; } = new();
 
-    // For pushed pages ApplyQueryAttributes fires BEFORE OnAppearing — LoadAsync is called
-    // from OnAppearing after _weekId and _filterGoalIds are already set.
     public void ApplyQueryAttributes(IDictionary<string, object> query)
     {
         if (query.TryGetValue("weekId", out var wid) && wid is Guid weekId)
@@ -50,11 +53,16 @@ public partial class WeeklyHabitsViewModel : ObservableObject, IQueryAttributabl
         WeekHeaderText = dto.StartDate.ToString("MMM dd, yyyy");
         WeekStatusText = $"{dto.Status}  |  SP: {dto.TotalWeeklySpEarned}";
 
-        var isFuture = dto.StartDate.Date > DateTime.Today;
+        var today         = DateTime.Today;
+        int daysFromMon   = ((int)today.DayOfWeek - (int)DayOfWeek.Monday + 7) % 7;
+        var currentMonday = today.AddDays(-daysFromMon);
+        var isFuture      = dto.StartDate.Date > today;
+        // Use DateOnly to avoid Kind.Unspecified vs. Kind.Local mismatch from SQLite.
+        var isCurrentWeek = DateOnly.FromDateTime(dto.StartDate) == DateOnly.FromDateTime(currentMonday);
 
         GoalGroups.Clear();
         foreach (var g in dto.GoalGroups)
-            GoalGroups.Add(new WeeklyGoalGroupItem(g, isFuture));
+            GoalGroups.Add(new WeeklyGoalGroupItem(g, isFuture, isCurrentWeek));
     }
 
     [RelayCommand]
@@ -71,6 +79,48 @@ public partial class WeeklyHabitsViewModel : ObservableObject, IQueryAttributabl
             ["goalDescription"] = item.GoalDescription,
             ["weekLabel"]       = item.WeekLabel
         });
+    }
+
+    [RelayCommand]
+    private async Task IWantMoreAsync(WeeklyGoalGroupItem item)
+    {
+        var userInput = await Shell.Current.CurrentPage.DisplayPromptAsync(
+            "I Want More", "What are you looking for?");
+
+        if (string.IsNullOrWhiteSpace(userInput)) return;
+
+        IsMomentBurstPending = true;
+        try
+        {
+            var result = await _mediator.Send(
+                new RequestMomentBurstCommand(item.WeekGoalId, userInput));
+
+            if (!result.IsSuccess) return;
+
+            if (result.Value is MomentBurstOutcome.Denied denied)
+            {
+                await MainThread.InvokeOnMainThreadAsync(() =>
+                    Shell.Current.CurrentPage!.DisplayAlertAsync("Keep the Focus", denied.Message, "OK"));
+                return;
+            }
+
+            var created      = (MomentBurstOutcome.HabitCreated)result.Value!;
+            var isOnThisPage = Shell.Current.CurrentPage?.BindingContext == this;
+
+            await MainThread.InvokeOnMainThreadAsync(async () =>
+            {
+                if (isOnThisPage)
+                    await LoadAsync();
+                else
+                    await _toastService.ShowInfoAsync(
+                        "Moment Burst Added!",
+                        $"'{created.NewHabit.HabitName}' has been added to your goal.");
+            });
+        }
+        finally
+        {
+            IsMomentBurstPending = false;
+        }
     }
 
     [RelayCommand]

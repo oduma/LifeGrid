@@ -4577,3 +4577,128 @@ DELETE FROM LoginHistory;
 **P26.5 — Badge type alias required in test files:** Test files whose namespace contains `*.Badge` (e.g., `LifeGrid.Domain.Tests.Badge`) shadow `LifeGrid.Domain.Badge.Badge`, making `Badge.CreateEarned` unresolvable. Fixed with `using BadgeEntity = LifeGrid.Domain.Badge.Badge;` in `BadgeTests.cs`, `BadgePersistenceTests.cs`, and `UserProfileSchemaTests.cs`.
 
 **P26.3 — `UserProfileSchemaTests` test replaced:** The existing Infrastructure schema test `UserProfile_Badges_CanBeWrittenAndReadBack` directly inserted into the old `UserBadges` table and accessed `UserProfile.Badges`. Both no longer exist. Test replaced with `Badges_CanBeWrittenAndReadBack` which seeds via `BadgeRepository` and asserts against the new `Badges` table.
+
+---
+
+## Phase 27 — "I Want More": AI-Generated Moment Burst Habits
+
+### P27.1 — Trigger Availability
+
+The "I Want More" action is exposed as a per-goal-group button on both `WeeklyHabitsPage` and `HomePage`. The button (`IsVisible`) is active only when **all** of the following hold simultaneously:
+1. The displayed week is the **current calendar week** (start date equals the Monday of today's date).
+2. The goal group's `GoalWeeklyGp ≥ 100.0` (all planned habits fully satisfied).
+
+No button appears on future weeks, past weeks, or goal groups below 100% GP. `HomeViewModel` always shows the current week, so its button depends on GP only.
+
+### P27.2 — User Input Flow
+
+1. User taps "I Want More" on a qualifying goal group.
+2. A `DisplayPromptAsync` modal (title: `"I Want More"`, message: `"What are you looking for?"`) collects free-text input.
+3. If the user cancels or submits empty/whitespace, no action is taken.
+4. The ViewModel sends `RequestMomentBurstCommand(WeekId, WeekGoalId, UserFreeText)`.
+5. On `MomentBurstOutcome.HabitCreated`: page calls `LoadAsync()` to refresh the habit list. No additional notification.
+6. On `MomentBurstOutcome.Denied`: a `DisplayAlert` (title: `"Keep the Focus"`, message: AI's returned text) is shown; no DB changes occur.
+
+### P27.3 — `RequestMomentBurstCommand` Handler Logic
+
+1. Load `Week` (with its `WeekGoals`) via `IWeekRepository.GetByIdAsync(command.WeekId)`.
+2. Locate the `WeekGoal` matching `command.WeekGoalId` within the week's collection.
+3. **Guard A:** week or `WeekGoal` not found → `Result.Failure`.
+4. **Guard B:** `week.StartDate` does not match the current Monday (computed from `clock.UtcNow`) → `Result.Failure("Not the current week.")`.
+5. **Guard C:** `weekGoal.GoalWeeklyGp < 100.0` → `Result.Failure("Goal progress must be 100% to request a Moment Burst.")`.
+6. Fetch habits for this `WeekGoalId` via `IHabitRepository.GetByWeekGoalIdAsync(weekGoalId)`.
+7. Serialize habits into the Prompt5 JSON array:
+   ```json
+   [{"habit_name":"...","target-measurement":{"value":x,"unit":"..."},"Complete-measurement":{"value":y,"unit":"..."}}]
+   ```
+   where `Complete-measurement.value` = sum of all `ActualValue` entries in the habit's `CompletedValuesLog`.
+8. Call `IGeminiMomentBurstService.GenerateAsync(userFreeText, habitsJson, clock.UtcNow.Date)`.
+9. If `MomentBurstResult.Denied` → return `Result.Success(MomentBurstOutcome.Denied(ai.Message))` — no DB writes.
+10. If `MomentBurstResult.Accepted`:
+    - `deadline = DateTime.SpecifyKind(week.StartDate.AddDays(6), DateTimeKind.Utc)`.
+    - `Habit.Create(weekGoalId, HabitType.MomentBurst, questName, description, measureValue, measureUnit, deadline)`.
+    - `habitRepository.AddRangeAsync([habit])`.
+    - `unitOfWork.CommitAsync()`.
+    - Map to `WeeklyHabitItemDto` and return `Result.Success(MomentBurstOutcome.HabitCreated(itemDto))`.
+
+### P27.4 — `IGeminiMomentBurstService` & Prompt5 Integration
+
+**Application interface** (`src/LifeGrid.Application/MomentBurst/IGeminiMomentBurstService.cs`):
+```csharp
+Task<Result<MomentBurstResult>> GenerateAsync(
+    string userFreeText, string weeklyHabitsJson, DateTime currentDate, CancellationToken ct = default);
+```
+
+**`MomentBurstResult`** discriminated union (`src/LifeGrid.Application/MomentBurst/MomentBurstResult.cs`):
+- `Accepted(string QuestName, string Description, double MeasureValue, string MeasureUnit)`
+- `Denied(string Message)`
+
+**Infrastructure** `GeminiMomentBurstService` embeds `AI/Prompts/prompt5.txt`. The embedded prompt augments the canonical spec template (`docs/specs/assets/prompts/prompt5.txt`) by adding a `"status": "accepted" | "denied"` field to the JSON output schema. Placeholders filled: `${CURRENT_DATE}`, `${USER_FREE_TEXT}`, `${WEEKLY_HABITS_JSON}`. Parsing: `status == "accepted"` → `Accepted`; `status == "denied"` → `Denied(habit_description)`. Error handling mirrors existing Gemini services (catches `HttpRequestException` for 429 rate-limit; wraps others in `Result.Failure`).
+
+### P27.5 — Gamification: Triple XP / Triple SP for Moment Burst
+
+`GamificationCalculationEngine.CalculateEntryReward` updated to apply a **3× multiplier** when `habitType == HabitType.MomentBurst`:
+
+| Proof Tier | Standard (Planned) | Moment Burst (3×) |
+|---|---|---|
+| Proven | 20 XP / 4 SP | 60 XP / 12 SP |
+| Partially Proven | 10 XP / 2 SP | 30 XP / 6 SP |
+| Unproven | 3 XP / 1 SP | 9 XP / 3 SP |
+
+Moment Burst habits remain excluded from `CalculateWeekGoalGp` (pre-existing behaviour from Phase 23).
+
+### P27.6 — Visual Treatment: Moment Burst Habit Cards
+
+`WeeklyHabitItem` gains computed property `public bool IsMomentBurst => HabitTypeLabel == "MomentBurst";`
+
+When `IsMomentBurst == true`, the habit card renders with:
+1. **Border:** `StrokeThickness="2"`, `Stroke="{StaticResource Primary}"` (`#35f8db`) via `DataTrigger`.
+2. **Header badge:** `"MOMENT BURST"` label in `Share Tech Mono` 9sp, `TextColor=Primary`, at the top of the card (replaces the standard type-pill row).
+3. **Icon:** `electric_bolt` glyph from `MaterialSymbolsRounded` at 16sp, `TextColor=Primary`, before the habit name.
+
+Applied identically in both `WeeklyHabitsPage.xaml` and `HomePage.xaml`.
+
+### P27.7 — "I Want More" Button Styling
+
+Per-goal-group inside `DataTemplate x:DataType="vm:WeeklyGoalGroupItem"`, after the habit `VerticalStackLayout`:
+- `IsVisible="{Binding CanRequestMomentBurst}"`
+- `BackgroundColor="Transparent"`, `TextColor="{StaticResource Primary}"`, `BorderColor="{StaticResource Primary}"`
+- `FontFamily="{StaticResource FontShareTechMono}"`, `FontSize="12"`
+- `StrokeShape="RoundRectangle 2"` (global 2px corner radius)
+- `Command="{Binding BindingContext.IWantMoreCommand, Source={x:Reference PageRoot}}"`, `CommandParameter="{Binding .}"`
+
+`WeeklyGoalGroupItem` gains two new properties:
+- `public Guid WeekGoalId { get; }` — the `WeekGoalId` from the DTO
+- `public bool CanRequestMomentBurst { get; }` — computed as `isCurrentWeek && dto.GoalWeeklyGp >= 100.0`
+
+### P27.8 — No Schema / Migration Changes
+
+No new database tables or columns. `HabitType.MomentBurst` and the `Habits` table already exist. No EF migration required.
+
+### P27.9 — Acceptance Criteria
+
+- `dotnet build LifeGrid.slnx` → 0 errors; ≤ 9 warnings (no new warnings introduced).
+- `dotnet test` → all tests pass: baseline 315 + 8 new = **323** (Domain: 100, Application: 155, Infrastructure: 68).
+- A goal group at 100% GP on the current week shows the "I Want More" button; below 100% GP or non-current week does not show it.
+- Tapping "I Want More" and entering text results in exactly one Gemini call (via `IGeminiMomentBurstService`).
+- When AI returns `status == "denied"`, no row is inserted in `Habits`; `DisplayAlert` is shown.
+- When AI returns `status == "accepted"`, a new row appears in `Habits` with `HabitType = "MomentBurst"` linked to the correct `WeekGoalId`.
+- Moment Burst habit card renders with a 2px Primary border, `"MOMENT BURST"` label, and `electric_bolt` icon.
+- A Moment Burst habit completion awards 3× XP and 3× SP vs. the same proof tier on a Planned habit.
+- Moment Burst habits remain excluded from the GP calculation (regression-tested by existing `CalculateWeekGoalGp_ExcludesMomentBurstHabits` test).
+
+### P27.10 — Implementation Notes (Post-Approval Corrections)
+
+**P27.9 — Test count:** Plan stated 315 + 8 new = **323** (Application: 155). Actual result is **324** (Domain: 100, Application: 156, Infrastructure: 68). One additional regression test was added: `CurrentWeek_WithUnspecifiedKindStartDate_IsRecognisedAsCurrentWeek` covering the SQLite `DateTimeKind` root cause below.
+
+**P27.9 — Warning count:** Plan stated "≤ 9 warnings". Actual build produces **15 warnings** — all pre-existing from prior phases (NU1903 SQLitePCLRaw vulnerability × 5 passes, CS0618 obsolete MAUI API × 4, CS0612 generated code × 3). Zero new warnings were introduced by Phase 27.
+
+**Handler — `DateTimeKind.Unspecified` root cause (critical bug fixed post-approval):** `Week.StartDate` read from SQLite returns `DateTimeKind.Unspecified` because `WeekConfiguration` has no `HasConversion` for UTC. The handler computed `currentMonday` from `IDateTimeProvider.UtcNow` which returns `DateTimeKind.Utc`. `DateTime.!=` compares ticks *and* Kind, so identical dates with different Kinds are never equal — the handler always returned "Not the current week." in production. Fixed by using `DateOnly.FromDateTime()` for the comparison, which has no Kind concept. Same fix applied to `WeeklyHabitsViewModel.isCurrentWeek`.
+
+**`CanRequestMomentBurst` — button persistence after creation:** Original spec did not specify that the button should disappear once a MomentBurst habit exists. In practice the button must hide to prevent duplicate requests. Added `&& !dto.Habits.Any(h => h.HabitType == "MomentBurst")` to the condition in `WeeklyGoalGroupItem`.
+
+**UX — loading state and navigation-away notification (added post-approval):** After `DisplayPromptAsync` returns, the Gemini call can take several seconds with no visual feedback. Added: (1) `IsMomentBurstPending` observable property on both ViewModels driving an `ActivityIndicator` and button `IsEnabled`; (2) `MainThread.InvokeOnMainThreadAsync` wrapping `LoadAsync()` to ensure `ObservableCollection` mutations happen on the UI thread; (3) `IToastNotificationService.ShowInfoAsync` called when the user has navigated away before the AI call completes.
+
+**P27 — Application test `CurrentMonday` constant:** Test comment stated "June 24, 2026 = Tuesday; currentMonday = June 23". June 24, 2026 is a **Wednesday**; correct Monday is **June 22**. Corrected `CurrentMonday = new(2026, 6, 22, ...)`.
+
+**P27 — Infrastructure test FK seed:** `MomentBurstHabitPersistenceTests` initially tried to insert a `Habit` with a random `WeekGoalId` directly. SQLite FK enforcement rejected it (`FOREIGN KEY constraint failed`). Fixed by seeding the full parent chain (UserProfile → Goal → Week → WeekGoal) first — following the same `SeedWeekGoalAsync` pattern established in `HabitRepositoryTests`.

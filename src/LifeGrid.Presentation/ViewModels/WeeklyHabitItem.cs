@@ -26,14 +26,16 @@ public sealed class WeeklyHabitItem
             .ToList();
     }
 
-    public Guid     HabitId          { get; }
-    public string   HabitTypeLabel   { get; }
-    public string   HabitName        { get; }
-    public string   HabitDescription { get; }
-    public string   TargetText       { get; }
-    public string   MeasurementUnit  { get; }
-    public string   GoalDescription  { get; }
-    public string   WeekLabel        { get; }
-    public bool     IsInteractive    { get; }
+    public Guid     HabitId            { get; }
+    public string   HabitTypeLabel     { get; }
+    public string   HabitName          { get; }
+    public string   HabitDescription   { get; }
+    public string   TargetText         { get; }
+    public string   MeasurementUnit    { get; }
+    public string   GoalDescription    { get; }
+    public string   WeekLabel          { get; }
+    public bool     IsInteractive      { get; }
+    public bool     IsMomentBurst      => HabitTypeLabel == "MomentBurst";
+    public bool     IsNotMomentBurst   => !IsMomentBurst;
     public IReadOnlyList<HabitCompletionLogItem> CompletionLogs { get; }
 }

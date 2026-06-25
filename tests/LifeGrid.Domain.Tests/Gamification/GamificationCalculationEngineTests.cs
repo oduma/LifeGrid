@@ -156,4 +156,36 @@ public sealed class GamificationCalculationEngineTests
         profile.Economy.ShieldsAvailable.Should().Be(2);
         profile.Economy.CurrentSp.Should().Be(5); // 35 % 30 = 5
     }
+
+    // ── MomentBurst triple reward ─────────────────────────────────────────────
+
+    [Fact]
+    public void CalculateEntryReward_MomentBurst_Proven_Returns60Xp12Sp()
+    {
+        var reward = GamificationCalculationEngine.CalculateEntryReward(
+            HabitType.MomentBurst, actualValue: 4, targetValue: 4, hasProof: true);
+
+        reward.XpEarned.Should().Be(60);
+        reward.SpEarned.Should().Be(12);
+    }
+
+    [Fact]
+    public void CalculateEntryReward_MomentBurst_PartiallyProven_Returns30Xp6Sp()
+    {
+        var reward = GamificationCalculationEngine.CalculateEntryReward(
+            HabitType.MomentBurst, actualValue: 2, targetValue: 4, hasProof: true);
+
+        reward.XpEarned.Should().Be(30);
+        reward.SpEarned.Should().Be(6);
+    }
+
+    [Fact]
+    public void CalculateEntryReward_MomentBurst_Unproven_Returns9Xp3Sp()
+    {
+        var reward = GamificationCalculationEngine.CalculateEntryReward(
+            HabitType.MomentBurst, actualValue: 4, targetValue: 4, hasProof: false);
+
+        reward.XpEarned.Should().Be(9);
+        reward.SpEarned.Should().Be(3);
+    }
 }

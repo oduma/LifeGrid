@@ -18,4 +18,8 @@ internal sealed class MauiToastNotificationService : IToastNotificationService
                     "Nice!"));
         }
     }
+
+    public Task ShowInfoAsync(string title, string message, CancellationToken ct = default)
+        => MainThread.InvokeOnMainThreadAsync(() =>
+            Shell.Current.CurrentPage!.DisplayAlertAsync(title, message, "OK"));
 }

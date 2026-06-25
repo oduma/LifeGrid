@@ -246,7 +246,7 @@ Every successful data entry triggers a recalculation of core metrics, which are 
 * **The Trigger:** The user shares an image file to the application from an external source.
 * **Cascading Selection Flow:** The user must define context sequentially: Goal (populates Deadline) -> Week Starting Date (populates Week Number) -> Habit (populates Target Value) -> Input Completed Value Set.
 
-### 3.10 Daily Engagement Tracking & "Showing Up" Badges
+### 3.10 Daily Engagement Tracking & "Showing Up" Badges (Done)
 The engine logically divides the calendar week into two distinct blocks: First Part (Monday-Wednesday) and Second Part (Thursday-Sunday). Requires daily login.
 * **Mr. Consistency (Bronze):** Logged in every day, zero habit data recorded.
 * **Mr. Consistency (Silver):** Logged in every day, recorded data *only* during the Second Part (Thu-Sun).
@@ -276,7 +276,7 @@ The user triggers an explicit "Overwhelmed" action for a specific goal.
 
 ### 4.3 Week Level Interactions
 
-#### 4.3.1 The "I Want More" Quest System (Moment Burst Quests)
+#### 4.3.1 The "I Want More" Quest System (Moment Burst Quests) (Done)
 * **Trigger:** Available only for the Current Week and only for the week goals with GP is at least 100%. 
 * **Execution:** User inputs a text explaining what he wants. AI generates a habit flagged as `Moment Burst Quest`. This habit awards triple XP and triple SP but is explicitly excluded from the Goal Progression (GP) mathematical average.
 * **Prompt:** <file path="docs\specs\assets\prompts\prompt5.txt">

@@ -8,6 +8,7 @@ public record WeeklyHabitsDashboardDto(
     IReadOnlyList<WeeklyGoalGroupDto> GoalGroups);
 
 public record WeeklyGoalGroupDto(
+    Guid   WeekGoalId,
     Guid   GoalId,
     string GoalDescription,
     int    WeekGoalNumber,

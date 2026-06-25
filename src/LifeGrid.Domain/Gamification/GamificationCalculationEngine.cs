@@ -9,14 +9,14 @@ public static class GamificationCalculationEngine
     public static EntryReward CalculateEntryReward(
         HabitType habitType, double actualValue, double targetValue, bool hasProof)
     {
-        // Double XP (Flash / DoubleXpMode) deferred to a later phase
-        _ = habitType;
-        var tier = DetermineProofTier(actualValue, targetValue, hasProof);
+        // Flash / DoubleXpMode multiplier deferred to a later phase
+        var tier       = DetermineProofTier(actualValue, targetValue, hasProof);
+        int multiplier = habitType == HabitType.MomentBurst ? 3 : 1;
         return tier switch
         {
-            ProofTier.Proven          => new EntryReward(20, 4),
-            ProofTier.PartiallyProven => new EntryReward(10, 2),
-            _                         => new EntryReward(3,  1)
+            ProofTier.Proven          => new EntryReward(20 * multiplier, 4 * multiplier),
+            ProofTier.PartiallyProven => new EntryReward(10 * multiplier, 2 * multiplier),
+            _                         => new EntryReward( 3 * multiplier, 1 * multiplier)
         };
     }
 

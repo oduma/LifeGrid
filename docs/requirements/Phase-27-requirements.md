@@ -7,10 +7,10 @@ This document defines the strict requirements for Phase 27. The objective is to 
 
 ## 1. External Reference Mapping
 Claude Code must parse structural rules, prompt templates, and data schemas directly from the master repository definitions:
-* **Functional Logic:** `functional-requirements.md` (Section 4.3.1).
-* **AI Prompt Template:** `Prompt5.txt`.
-* **Data Schema:** `data-structure.json` (`Habit`, `Week_Goal_Item`).
-* **Visual Tokens:** `design-system.md` (Colors/Typography), `style-guide.md` (Iconography/Visual hierarchy).
+* **Functional Logic:** `docs\specs\functional-requirements.md` (Section 4.3.1).
+* **AI Prompt Template:** `docs\specs\assets\prompts\Prompt5.txt`.
+* **Data Schema:** `docs\specs\data-structure.json` (`Habit`, `Week_Goal_Item`).
+* **Visual Tokens:** `docs\specs\style-guide.md` .
 
 ---
 
@@ -20,7 +20,7 @@ Claude Code must parse structural rules, prompt templates, and data schemas dire
 * Implement the `RequestMomentBurstCommand` handler.
 * **Context Injection:** When the user triggers the action, the service must collect the current `Goal.Description` and the current `Week` temporal context.
 * **Execution:**
-  * Forward the context + User Request string to Gemini using the structure defined in `Prompt5.txt`.
+  * Forward the context + User Request string to Gemini using the structure defined in `docs\specs\assets\prompts\Prompt5.txt`.
   * **Parser Directive:** The AI response must return a structured JSON response indicating the habit details or an explicit "Denial" status if the request is deemed invalid or outside scope.
 
 ### 2.2 Domain State Mutation (Acceptance vs. Denial)

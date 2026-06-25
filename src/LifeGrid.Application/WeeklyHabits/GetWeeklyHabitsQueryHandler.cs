@@ -45,6 +45,7 @@ public sealed class GetWeeklyHabitsQueryHandler(
                 ? list : new List<HabitEntity>();
 
             return new WeeklyGoalGroupDto(
+                wg.WeekGoalId,
                 wg.GoalId,
                 descMap.GetValueOrDefault(wg.GoalId, string.Empty),
                 wg.WeekGoalNumber,

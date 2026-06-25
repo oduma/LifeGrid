@@ -23,6 +23,7 @@
     <EmbeddedResource Include="AI\Prompts\prompt2.2.txt" />
     <EmbeddedResource Include="AI\Prompts\prompt3.1.txt" />
     <EmbeddedResource Include="AI\Prompts\prompt3.2.txt" />
+    <EmbeddedResource Include="AI\Prompts\prompt5.txt" />
   </ItemGroup>
 
   <ItemGroup>

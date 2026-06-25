@@ -2,6 +2,7 @@ using LifeGrid.Application.Badge;
 using LifeGrid.Application.Common;
 using LifeGrid.Application.Goal;
 using LifeGrid.Application.Habit;
+using LifeGrid.Application.MomentBurst;
 using LifeGrid.Application.Onboarding;
 using LifeGrid.Application.UserProfile;
 using LifeGrid.Application.Vice;
@@ -53,6 +54,7 @@ public static class InfrastructureServiceExtensions
         services.AddTransient<IGeminiGoalValidationService, GeminiGoalValidationService>();
         services.AddTransient<IGeminiHabitGenerationService, GeminiHabitGenerationService>();
         services.AddTransient<IGeminiViceSurveyService, GeminiViceSurveyService>();
+        services.AddTransient<IGeminiMomentBurstService, GeminiMomentBurstService>();
         services.AddTransient<IFactoryResetService, FactoryResetService>();
 
         return services;
