@@ -10,6 +10,7 @@ using LifeGrid.Presentation.Services;
 using LifeGrid.Presentation.ViewModels;
 using Microsoft.Extensions.Logging;
 using SkiaSharp.Views.Maui.Controls.Hosting;
+using LifeGrid.Application.Notification;
 
 namespace LifeGrid.Presentation;
 
@@ -37,6 +38,7 @@ public static class MauiProgram
             cfg.RegisterServicesFromAssembly(typeof(GetOrCreateOnboardingSessionQuery).Assembly));
 
         builder.Services.AddSingleton<IEconomyStateBroadcaster, WeakReferenceMessengerBroadcaster>();
+        builder.Services.AddSingleton<INavigationService, ShellNavigationService>();
         builder.Services.AddSingleton<AppShellViewModel>();
         builder.Services.AddSingleton<HudViewModel>();
         builder.Services.AddSingleton<AppShell>();
@@ -60,6 +62,8 @@ public static class MauiProgram
         builder.Services.AddTransient<WeeklyHabitsPage>();
         builder.Services.AddTransient<VaultViewModel>();
         builder.Services.AddTransient<VaultPage>();
+        builder.Services.AddTransient<NotificationInboxViewModel>();
+        builder.Services.AddTransient<NotificationInboxPage>();
         builder.Services.AddSingleton<IToastNotificationService, MauiToastNotificationService>();
         builder.Services.AddScoped<IConsistencyBadgeEvaluator, ConsistencyBadgeEvaluator>();
 

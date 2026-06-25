@@ -1,9 +1,12 @@
 using LifeGrid.Application.Common;
 using LifeGrid.Application.Gamification;
+using LifeGrid.Application.Notification;
 using LifeGrid.Application.UserProfile;
 using LifeGrid.Domain.Common;
 using LifeGrid.Domain.Week;
 using MediatR;
+using NotificationEntity = LifeGrid.Domain.Notification.Notification;
+using NotificationType   = LifeGrid.Domain.Notification.NotificationType;
 
 namespace LifeGrid.Application.Week;
 
@@ -14,7 +17,8 @@ public sealed class PauseWeekCommandHandler(
     IUserProfileRepository   userProfileRepository,
     IDateTimeProvider        dateTimeProvider,
     IUnitOfWork              unitOfWork,
-    IEconomyStateBroadcaster broadcaster)
+    IEconomyStateBroadcaster broadcaster,
+    INotificationRepository  notificationRepository)
     : IRequestHandler<PauseWeekCommand, Result>
 {
     public async Task<Result> Handle(PauseWeekCommand request, CancellationToken cancellationToken)
@@ -71,6 +75,14 @@ public sealed class PauseWeekCommandHandler(
             var nextWeek = await weekRepository.GetByWeekNumberAsync(week.WeekNumber + 1, ct);
             nextWeek?.MarkAsReEntry();
         }
+
+        var freezeNotification = NotificationEntity.Create(
+            "Week Frozen",
+            $"Week {week.WeekNumber} has been frozen. 1 shield consumed. {profile.Economy.ShieldsAvailable} shield(s) remaining.",
+            NotificationType.ShieldUpdate,
+            null,
+            dateTimeProvider.UtcNow);
+        await notificationRepository.AddAsync(freezeNotification, ct);
 
         await unitOfWork.CommitAsync(ct);
         broadcaster.BroadcastEconomy(profile.Economy.CurrentSp, profile.Economy.ShieldsAvailable);

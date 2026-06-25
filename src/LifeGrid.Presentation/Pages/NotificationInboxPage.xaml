@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:LifeGrid.Presentation.ViewModels"
+    x:Class="LifeGrid.Presentation.Pages.NotificationInboxPage"
+    Title="Inbox"
+    BackgroundColor="{StaticResource Background}">
+
+    <Grid RowDefinitions="*">
+
+        <!-- Empty State -->
+        <Label
+            Grid.Row="0"
+            Text="No notifications yet."
+            IsVisible="{Binding IsEmptyStateVisible}"
+            HorizontalOptions="Center"
+            VerticalOptions="Center"
+            HorizontalTextAlignment="Center"
+            FontFamily="ShareTechMono"
+            FontSize="14"
+            TextColor="{StaticResource OnSurface}"
+            Margin="24,48" />
+
+        <!-- Notification list -->
+        <CollectionView
+            Grid.Row="0"
+            ItemsSource="{Binding Notifications}"
+            IsVisible="{Binding IsEmptyStateVisible, Converter={StaticResource InverseBool}}"
+            Margin="16,12,16,16">
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="vm:NotificationItemViewModel">
+                    <Border
+                        Margin="0,0,0,8"
+                        Padding="12,10"
+                        BackgroundColor="{StaticResource Surface}"
+                        StrokeThickness="1"
+                        Stroke="{StaticResource SurfaceBrush}"
+                        StrokeShape="RoundRectangle 2">
+
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer
+                                Command="{Binding Source={RelativeSource AncestorType={x:Type vm:NotificationInboxViewModel}}, Path=TapNotificationCommand}"
+                                CommandParameter="{Binding .}" />
+                        </Border.GestureRecognizers>
+
+                        <Grid ColumnDefinitions="8,*" ColumnSpacing="10">
+
+                            <!-- Unread indicator dot -->
+                            <BoxView
+                                Grid.Column="0"
+                                WidthRequest="6"
+                                HeightRequest="6"
+                                CornerRadius="3"
+                                BackgroundColor="{StaticResource Primary}"
+                                IsVisible="{Binding IsUnread}"
+                                VerticalOptions="Start"
+                                Margin="0,6,0,0" />
+
+                            <VerticalStackLayout Grid.Column="1" Spacing="4">
+
+                                <!-- Type badge + timestamp row -->
+                                <Grid ColumnDefinitions="Auto,*">
+                                    <Border
+                                        Grid.Column="0"
+                                        Padding="6,2"
+                                        BackgroundColor="{StaticResource Primary}"
+                                        StrokeThickness="0"
+                                        StrokeShape="RoundRectangle 2">
+                                        <Label
+                                            Text="{Binding TypeLabel}"
+                                            FontFamily="ShareTechMono"
+                                            FontSize="9"
+                                            TextColor="{StaticResource OnSurface}" />
+                                    </Border>
+                                    <Label
+                                        Grid.Column="1"
+                                        Text="{Binding FormattedTs}"
+                                        FontFamily="ShareTechMono"
+                                        FontSize="10"
+                                        TextColor="{StaticResource OnSurface}"
+                                        HorizontalTextAlignment="End"
+                                        VerticalOptions="Center" />
+                                </Grid>
+
+                                <!-- Title: bold when unread -->
+                                <Label
+                                    Text="{Binding Title}"
+                                    FontFamily="DMMono-Medium"
+                                    FontSize="13"
+                                    FontAttributes="None"
+                                    TextColor="{StaticResource OnSurface}">
+                                    <Label.Triggers>
+                                        <DataTrigger TargetType="Label" Binding="{Binding IsUnread}" Value="True">
+                                            <Setter Property="FontAttributes" Value="Bold" />
+                                        </DataTrigger>
+                                    </Label.Triggers>
+                                </Label>
+
+                                <!-- Message -->
+                                <Label
+                                    Text="{Binding Message}"
+                                    FontFamily="ShareTechMono"
+                                    FontSize="12"
+                                    TextColor="{StaticResource OnSurface}"
+                                    LineBreakMode="WordWrap" />
+
+                            </VerticalStackLayout>
+
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+
+    </Grid>
+
+</ContentPage>

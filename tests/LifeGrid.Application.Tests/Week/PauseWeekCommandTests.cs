@@ -1,6 +1,7 @@
 using FluentAssertions;
 using LifeGrid.Application.Common;
 using LifeGrid.Application.Gamification;
+using LifeGrid.Application.Notification;
 using LifeGrid.Application.UserProfile;
 using LifeGrid.Application.Week;
 using LifeGrid.Domain.Week;
@@ -12,11 +13,12 @@ namespace LifeGrid.Application.Tests.Week;
 
 public sealed class PauseWeekCommandTests
 {
-    private readonly IWeekRepository          _weekRepo    = Substitute.For<IWeekRepository>();
-    private readonly IUserProfileRepository   _profileRepo = Substitute.For<IUserProfileRepository>();
-    private readonly IDateTimeProvider        _clock       = Substitute.For<IDateTimeProvider>();
-    private readonly IUnitOfWork              _uow         = Substitute.For<IUnitOfWork>();
-    private readonly IEconomyStateBroadcaster _broadcaster = Substitute.For<IEconomyStateBroadcaster>();
+    private readonly IWeekRepository          _weekRepo              = Substitute.For<IWeekRepository>();
+    private readonly IUserProfileRepository   _profileRepo           = Substitute.For<IUserProfileRepository>();
+    private readonly IDateTimeProvider        _clock                 = Substitute.For<IDateTimeProvider>();
+    private readonly IUnitOfWork              _uow                   = Substitute.For<IUnitOfWork>();
+    private readonly IEconomyStateBroadcaster _broadcaster           = Substitute.For<IEconomyStateBroadcaster>();
+    private readonly INotificationRepository  _notificationRepo      = Substitute.For<INotificationRepository>();
     private readonly PauseWeekCommandHandler  _handler;
 
     // Fixed Monday two weeks from now — a future week
@@ -39,7 +41,7 @@ public sealed class PauseWeekCommandTests
     {
         _clock.UtcNow.Returns(Wednesday);
         _handler = new PauseWeekCommandHandler(
-            _weekRepo, _profileRepo, _clock, _uow, _broadcaster);
+            _weekRepo, _profileRepo, _clock, _uow, _broadcaster, _notificationRepo);
     }
 
     // ── Hibernate ──────────────────────────────────────────────────────────────

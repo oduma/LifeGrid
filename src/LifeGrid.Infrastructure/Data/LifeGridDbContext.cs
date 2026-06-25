@@ -2,6 +2,7 @@ using LifeGrid.Application.Common;
 using LifeGrid.Domain.Badge;
 using LifeGrid.Domain.Goal;
 using LifeGrid.Domain.Habit;
+using LifeGrid.Domain.Notification;
 using LifeGrid.Domain.Onboarding;
 using LifeGrid.Domain.UserProfile;
 using LifeGrid.Domain.Week;
@@ -22,6 +23,7 @@ public sealed class LifeGridDbContext(DbContextOptions<LifeGridDbContext> option
     public DbSet<WeekGoal>          WeekGoals           => Set<WeekGoal>();
     public DbSet<Habit>             Habits              => Set<Habit>();
     public DbSet<CompletedValueLog> CompletedValueLogs  => Set<CompletedValueLog>();
+    public DbSet<Notification>      Notifications       => Set<Notification>();
 
     public Task CommitAsync(CancellationToken ct = default) => SaveChangesAsync(ct);
 

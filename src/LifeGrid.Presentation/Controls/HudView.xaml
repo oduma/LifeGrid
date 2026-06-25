@@ -102,16 +102,36 @@
             </HorizontalStackLayout>
         </ScrollView>
 
-        <!-- Right: Notifications icon -->
-        <Label
-            Grid.Column="2"
-            Text="&#xE7F4;"
-            Style="{StaticResource IconStyle}"
-            VerticalOptions="Center">
-            <Label.GestureRecognizers>
-                <TapGestureRecognizer Tapped="OnNotificationsTapped" />
-            </Label.GestureRecognizers>
-        </Label>
+        <!-- Right: Notifications icon with unread badge -->
+        <Grid Grid.Column="2" VerticalOptions="Center">
+            <Label
+                Text="&#xE7F4;"
+                Style="{StaticResource IconStyle}"
+                VerticalOptions="Center">
+                <Label.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnNotificationsTapped" />
+                </Label.GestureRecognizers>
+            </Label>
+            <Border
+                IsVisible="{Binding HasUnread}"
+                BackgroundColor="{StaticResource Error}"
+                WidthRequest="16"
+                HeightRequest="16"
+                HorizontalOptions="End"
+                VerticalOptions="Start"
+                Margin="0,0,-2,-2">
+                <Border.StrokeShape>
+                    <Ellipse />
+                </Border.StrokeShape>
+                <Label
+                    Text="{Binding UnreadCount}"
+                    FontFamily="ShareTechMono"
+                    FontSize="9"
+                    TextColor="{StaticResource OnSurface}"
+                    HorizontalOptions="Center"
+                    VerticalOptions="Center" />
+            </Border>
+        </Grid>
 
     </Grid>
 

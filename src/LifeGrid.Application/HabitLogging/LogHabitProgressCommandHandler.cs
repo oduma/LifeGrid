@@ -1,12 +1,15 @@
 using LifeGrid.Application.Common;
 using LifeGrid.Application.Gamification;
 using LifeGrid.Application.Habit;
+using LifeGrid.Application.Notification;
 using LifeGrid.Application.UserProfile;
 using LifeGrid.Application.Week;
 using LifeGrid.Domain.Common;
 using LifeGrid.Domain.Gamification;
 using LifeGrid.Domain.Habit;
 using MediatR;
+using NotificationEntity = LifeGrid.Domain.Notification.Notification;
+using NotificationType   = LifeGrid.Domain.Notification.NotificationType;
 
 namespace LifeGrid.Application.HabitLogging;
 
@@ -16,7 +19,8 @@ public sealed class LogHabitProgressCommandHandler(
     IUserProfileRepository   userProfileRepository,
     IDateTimeProvider        dateTimeProvider,
     IUnitOfWork              unitOfWork,
-    IEconomyStateBroadcaster broadcaster)
+    IEconomyStateBroadcaster broadcaster,
+    INotificationRepository  notificationRepository)
     : IRequestHandler<LogHabitProgressCommand, Result>
 {
     public async Task<Result> Handle(
@@ -87,11 +91,23 @@ public sealed class LogHabitProgressCommandHandler(
             : newWeekGoalGp;
 
         // Apply all mutations — EF change tracking persists these in one CommitAsync
+        int shieldsBefore = profile.Economy.ShieldsAvailable;
         weekGoal.RecordMetricsUpdate(newWeekGoalGp, reward.XpEarned);
         week.AddSpEarned(reward.SpEarned);
         profile.GrantSp(reward.SpEarned);
         profile.ApplyXpAndLevelProgression(reward.XpEarned);
         profile.UpdateLifetimeGpAverage(newLifetimeGpAvg);
+
+        if (profile.Economy.ShieldsAvailable > shieldsBefore)
+        {
+            var shieldNotification = NotificationEntity.Create(
+                "Shield Earned",
+                $"You earned a Shield! You now have {profile.Economy.ShieldsAvailable} shield(s) available.",
+                NotificationType.ShieldUpdate,
+                null,
+                dateTimeProvider.UtcNow);
+            await notificationRepository.AddAsync(shieldNotification, cancellationToken);
+        }
 
         await unitOfWork.CommitAsync(cancellationToken);
 

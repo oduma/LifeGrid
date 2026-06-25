@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Messaging;
 using LifeGrid.Application.Gamification;
 using LifeGrid.Application.Hud;
+using LifeGrid.Application.Notification;
 using MediatR;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Maui.Graphics;
@@ -45,27 +46,34 @@ public partial class HudViewModel : ObservableObject
     [ObservableProperty] private string _shieldsActive = "0";
     [ObservableProperty] private string _shieldsCap    = "0";
 
+    [NotifyPropertyChangedFor(nameof(HasUnread))]
+    [ObservableProperty] private int _unreadCount;
+
+    public bool HasUnread => UnreadCount > 0;
+
     public Color SpCurrentColor => IsInDeepDeficit ? DeficitSpColor : NormalSpColor;
 
     public async Task LoadAsync(CancellationToken ct = default)
     {
         using var scope   = _scopeFactory.CreateScope();
         var       mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
-        var result = await mediator.Send(new GetHudTelemetryQuery(), ct);
+        var result      = await mediator.Send(new GetHudTelemetryQuery(), ct);
+        var countResult = await mediator.Send(new GetUnreadCountQuery(), ct);
         if (!result.IsSuccess) return;
         var d = result.Value!;
         MainThread.BeginInvokeOnMainThread(() =>
         {
-            Level          = d.Level.ToString();
-            GpLifetime     = ((int)Math.Ceiling(d.LifetimeGp)).ToString();
-            GpWeekly       = ((int)Math.Ceiling(d.WeeklyGp)).ToString();
-            XpLifetime     = d.LifetimeXp.ToString();
-            XpWeekly       = d.WeeklyXp.ToString();
+            Level           = d.Level.ToString();
+            GpLifetime      = ((int)Math.Ceiling(d.LifetimeGp)).ToString();
+            GpWeekly        = ((int)Math.Ceiling(d.WeeklyGp)).ToString();
+            XpLifetime      = d.LifetimeXp.ToString();
+            XpWeekly        = d.WeeklyXp.ToString();
             IsInDeepDeficit = d.CurrentSp < 0;
-            SpCurrent      = d.CurrentSp.ToString();
-            SpWeekly       = d.WeeklySpEarned.ToString();
-            ShieldsActive  = d.ActiveShields.ToString();
-            ShieldsCap     = d.ShieldCap.ToString();
+            SpCurrent       = d.CurrentSp.ToString();
+            SpWeekly        = d.WeeklySpEarned.ToString();
+            ShieldsActive   = d.ActiveShields.ToString();
+            ShieldsCap      = d.ShieldCap.ToString();
+            UnreadCount     = countResult.IsSuccess ? countResult.Value : 0;
         });
     }
 }

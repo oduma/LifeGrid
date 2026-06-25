@@ -3,6 +3,7 @@ using LifeGrid.Application.Common;
 using LifeGrid.Application.Goal;
 using LifeGrid.Application.Habit;
 using LifeGrid.Application.MomentBurst;
+using LifeGrid.Application.Notification;
 using LifeGrid.Application.Onboarding;
 using LifeGrid.Application.UserProfile;
 using LifeGrid.Application.Vice;
@@ -34,6 +35,7 @@ public static class InfrastructureServiceExtensions
         services.AddScoped<IHabitRepository, HabitRepository>();
         services.AddScoped<IBadgeRepository, BadgeRepository>();
         services.AddScoped<ILoginHistoryRepository, LoginHistoryRepository>();
+        services.AddScoped<INotificationRepository, NotificationRepository>();
         services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<LifeGridDbContext>());
 
         services.AddSingleton<ISecureStorageService, SecureStorageService>();

@@ -103,6 +103,17 @@
     ]
   },
 
+  "Notification": {
+    "_note": "Phase 29: centralized inbox for push and system messages. Created by Application handlers on key events (shield earned, week frozen). Ordered descending by Timestamp in queries.",
+    "NotificationID": "Guid // PK",
+    "Title": "String // max 200 chars; e.g., 'Shield Earned'",
+    "Message": "String // max 1000 chars; human-readable body text",
+    "Type": "String // Enum stored as string: 'Quest' | 'Warning' | 'ShieldUpdate' | 'WeeklyRecap'",
+    "DeepLinkUrl": "String? // Nullable; structured URI for in-app routing, e.g., 'lifegrid://habit/{habitId}' or 'lifegrid://goal/{goalId}'",
+    "IsRead": "Boolean // false on creation; set to true via MarkNotificationReadCommand",
+    "Timestamp": "DateTime // UTC; set by IDateTimeProvider at notification creation time"
+  },
+
   "Habit": {
     "HabitID": "Guid",
     "Week_GoalID": "Guid // FK linking directly to the specific Goal's week state",

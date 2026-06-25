@@ -16,5 +16,10 @@ public partial class HudView : ContentView
         await Shell.Current.GoToAsync("user-setup");
     }
 
-    private void OnNotificationsTapped(object? sender, TappedEventArgs e) { }
+    private async void OnNotificationsTapped(object? sender, TappedEventArgs e)
+    {
+        if (Shell.Current?.BindingContext is not AppShellViewModel { IsOnboardingComplete: true })
+            return;
+        await Shell.Current.GoToAsync("notification-inbox");
+    }
 }

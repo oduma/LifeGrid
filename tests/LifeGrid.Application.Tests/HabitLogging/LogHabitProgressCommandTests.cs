@@ -3,6 +3,7 @@ using LifeGrid.Application.Common;
 using LifeGrid.Application.Gamification;
 using LifeGrid.Application.Habit;
 using LifeGrid.Application.HabitLogging;
+using LifeGrid.Application.Notification;
 using LifeGrid.Application.UserProfile;
 using LifeGrid.Application.Week;
 using NSubstitute;
@@ -16,12 +17,13 @@ namespace LifeGrid.Application.Tests.HabitLogging;
 
 public sealed class LogHabitProgressCommandTests
 {
-    private readonly IHabitRepository         _habitRepo   = Substitute.For<IHabitRepository>();
-    private readonly IWeekRepository          _weekRepo    = Substitute.For<IWeekRepository>();
-    private readonly IUserProfileRepository   _profileRepo = Substitute.For<IUserProfileRepository>();
-    private readonly IDateTimeProvider        _clock       = Substitute.For<IDateTimeProvider>();
-    private readonly IUnitOfWork              _uow         = Substitute.For<IUnitOfWork>();
-    private readonly IEconomyStateBroadcaster _broadcaster = Substitute.For<IEconomyStateBroadcaster>();
+    private readonly IHabitRepository         _habitRepo        = Substitute.For<IHabitRepository>();
+    private readonly IWeekRepository          _weekRepo         = Substitute.For<IWeekRepository>();
+    private readonly IUserProfileRepository   _profileRepo      = Substitute.For<IUserProfileRepository>();
+    private readonly IDateTimeProvider        _clock            = Substitute.For<IDateTimeProvider>();
+    private readonly IUnitOfWork              _uow              = Substitute.For<IUnitOfWork>();
+    private readonly IEconomyStateBroadcaster _broadcaster      = Substitute.For<IEconomyStateBroadcaster>();
+    private readonly INotificationRepository  _notificationRepo = Substitute.For<INotificationRepository>();
     private readonly LogHabitProgressCommandHandler _handler;
 
     private static readonly DateTime FixedNow =
@@ -53,7 +55,7 @@ public sealed class LogHabitProgressCommandTests
                     .Returns(SeedProfile);
 
         _handler = new LogHabitProgressCommandHandler(
-            _habitRepo, _weekRepo, _profileRepo, _clock, _uow, _broadcaster);
+            _habitRepo, _weekRepo, _profileRepo, _clock, _uow, _broadcaster, _notificationRepo);
     }
 
     // ── validation ────────────────────────────────────────────────────────────
