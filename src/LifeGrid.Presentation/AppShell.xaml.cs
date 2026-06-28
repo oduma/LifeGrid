@@ -18,6 +18,7 @@ public partial class AppShell : Shell
         Routing.RegisterRoute("week-detail",             typeof(WeeklyHabitsPage));
         Routing.RegisterRoute("habit-logging",           typeof(HabitLoggingPage));
         Routing.RegisterRoute("notification-inbox",      typeof(NotificationInboxPage));
+        Routing.RegisterRoute("week-summary",            typeof(WeekSummaryPage));
 
         viewModel.PropertyChanged += (_, e) =>
         {

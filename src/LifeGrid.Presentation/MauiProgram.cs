@@ -2,6 +2,7 @@ using LifeGrid.Application.Badge;
 using LifeGrid.Application.Common;
 using LifeGrid.Application.Gamification;
 using LifeGrid.Application.Onboarding.Queries;
+using LifeGrid.Application.Week;
 using LifeGrid.Infrastructure.Data;
 using LifeGrid.Infrastructure.DependencyInjection;
 using Microsoft.EntityFrameworkCore;
@@ -9,6 +10,7 @@ using LifeGrid.Presentation.Pages;
 using LifeGrid.Presentation.Services;
 using LifeGrid.Presentation.ViewModels;
 using Microsoft.Extensions.Logging;
+using Plugin.LocalNotification;
 using SkiaSharp.Views.Maui.Controls.Hosting;
 using LifeGrid.Application.Notification;
 
@@ -22,6 +24,7 @@ public static class MauiProgram
         builder
             .UseMauiApp<App>()
             .UseSkiaSharp()
+            .UseLocalNotification()
             .ConfigureFonts(fonts =>
             {
                 fonts.AddFont("DMMono-Regular.ttf",         "DMMono-Regular");
@@ -64,7 +67,11 @@ public static class MauiProgram
         builder.Services.AddTransient<VaultPage>();
         builder.Services.AddTransient<NotificationInboxViewModel>();
         builder.Services.AddTransient<NotificationInboxPage>();
+        builder.Services.AddTransient<WeekSummaryViewModel>();
+        builder.Services.AddTransient<WeekSummaryPage>();
         builder.Services.AddSingleton<IToastNotificationService, MauiToastNotificationService>();
+        builder.Services.AddSingleton<IPushNotificationService, LocalPushNotificationService>();
+        builder.Services.AddScoped<IWeekLifecycleSyncService, WeekLifecycleSyncService>();
         builder.Services.AddScoped<IConsistencyBadgeEvaluator, ConsistencyBadgeEvaluator>();
 
 #if DEBUG
@@ -78,6 +85,10 @@ public static class MauiProgram
             var db = scope.ServiceProvider.GetRequiredService<LifeGridDbContext>();
             db.Database.Migrate();
         }
+
+#if ANDROID
+        LifeGrid.Presentation.Platform.WeekLifecycleScheduler.Schedule();
+#endif
 
         return app;
     }

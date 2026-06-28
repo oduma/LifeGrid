@@ -50,4 +50,26 @@ public sealed class NotificationRouteParserTests
 
         route.Should().BeNull();
     }
+
+    [Fact]
+    public void ToShellRoute_WeekDeepLink_ReturnsWeekDetailRoute()
+    {
+        var weekId = Guid.NewGuid();
+        var url    = $"lifegrid://week/{weekId}";
+
+        var route = NotificationRouteParser.ToShellRoute(url);
+
+        route.Should().Be($"week-detail?weekId={weekId}");
+    }
+
+    [Fact]
+    public void ToShellRoute_SummaryDeepLink_ReturnsWeekSummaryRoute()
+    {
+        var weekId = Guid.NewGuid();
+        var url    = $"lifegrid://summary/{weekId}";
+
+        var route = NotificationRouteParser.ToShellRoute(url);
+
+        route.Should().Be($"week-summary?weekId={weekId}");
+    }
 }

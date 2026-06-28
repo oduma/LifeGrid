@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.Messaging;
 using LifeGrid.Application.Common;
 using LifeGrid.Application.Gamification;
 using LifeGrid.Application.MomentBurst;
+using LifeGrid.Application.Week;
 using LifeGrid.Application.WeeklyHabits;
 using MediatR;
 using System.Collections.ObjectModel;
@@ -26,18 +27,24 @@ public partial class WeeklyHabitsViewModel : ObservableObject, IQueryAttributabl
             async (r, _) => await MainThread.InvokeOnMainThreadAsync(r.LoadAsync));
     }
 
-    [ObservableProperty] private string  _weekHeaderText           = string.Empty;
-    [ObservableProperty] private string  _weekStatusText           = string.Empty;
+    [ObservableProperty] private string  _weekHeaderText            = string.Empty;
+    [ObservableProperty] private string  _weekStatusText            = string.Empty;
     [ObservableProperty] private string? _proofImageUrl;
     [ObservableProperty] private bool    _isProofImageOverlayVisible;
     [ObservableProperty] private bool    _isMomentBurstPending;
+    [ObservableProperty] private bool    _isCloseWeekButtonVisible;
+    [ObservableProperty] private bool    _isSummaryButtonVisible;
+    [ObservableProperty] private bool    _isLoggingEnabled         = true;
 
     public ObservableCollection<WeeklyGoalGroupItem> GoalGroups { get; } = new();
 
     public void ApplyQueryAttributes(IDictionary<string, object> query)
     {
-        if (query.TryGetValue("weekId", out var wid) && wid is Guid weekId)
-            _weekId = weekId;
+        if (query.TryGetValue("weekId", out var wid))
+        {
+            if (wid is Guid g)                            _weekId = g;
+            else if (wid is string s && Guid.TryParse(s, out var parsed)) _weekId = parsed;
+        }
 
         _filterGoalIds = query.TryGetValue("filterGoalIds", out var fids) &&
                          fids is IReadOnlyList<Guid> { Count: > 0 } ids
@@ -60,9 +67,16 @@ public partial class WeeklyHabitsViewModel : ObservableObject, IQueryAttributabl
         // Use DateOnly to avoid Kind.Unspecified vs. Kind.Local mismatch from SQLite.
         var isCurrentWeek = DateOnly.FromDateTime(dto.StartDate) == DateOnly.FromDateTime(currentMonday);
 
+        var (isLogging, isClose, isSummary) =
+            WeekClosureStateComputer.Compute(dto.Status, dto.StartDate, DateTime.UtcNow);
+        IsLoggingEnabled         = isLogging;
+        IsCloseWeekButtonVisible = isClose;
+        IsSummaryButtonVisible   = isSummary;
+
         GoalGroups.Clear();
         foreach (var g in dto.GoalGroups)
-            GoalGroups.Add(new WeeklyGoalGroupItem(g, isFuture, isCurrentWeek));
+            GoalGroups.Add(new WeeklyGoalGroupItem(g, isFuture, isCurrentWeek,
+                                                   isLoggingEnabled: isLogging));
     }
 
     [RelayCommand]
@@ -137,4 +151,16 @@ public partial class WeeklyHabitsViewModel : ObservableObject, IQueryAttributabl
         IsProofImageOverlayVisible = false;
         ProofImageUrl              = null;
     }
+
+    [RelayCommand]
+    private async Task CloseWeekAsync()
+    {
+        var result = await _mediator.Send(new CloseWeekCommand(_weekId));
+        if (result.IsSuccess)
+            await LoadAsync();
+    }
+
+    [RelayCommand]
+    private Task GoToSummaryAsync()
+        => Shell.Current.GoToAsync($"week-summary?weekId={_weekId}");
 }

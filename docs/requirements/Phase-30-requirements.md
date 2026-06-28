@@ -1,14 +1,14 @@
 # LifeGrid - Phase 30 Vertical Slice Requirements
 ## Weekly Lifecycle Engine & Closure Protocol
 
-This document defines the strict requirements for Phase 30. The objective is to implement the temporal lifecycle of a `Week`, enforcing the manual and automatic closure protocols as defined in `functional-requirements.md` (Section 5.1). For this phase, complex procrastination/review math is deferred; the focus is strictly on state transitions, background scheduling, notifications, and the read-only summary UI.
+This document defines the strict requirements for Phase 30. The objective is to implement the temporal lifecycle of a `Week`, enforcing the manual and automatic closure protocols as defined in `\docs\specs\functional-requirements.md` (Section 5.1). For this phase, complex procrastination/review math is deferred; the focus is strictly on state transitions, background scheduling, notifications, and the read-only summary UI.
 
 ---
 
 ## 1. External Reference Mapping
 Claude Code must parse structural rules and UI patterns directly from the master repository definitions:
-* **Functional Logic:** `functional-requirements.md` (Section 5.1).
-* **Data Schema:** `data-structure.json` (`Week.Status` must now explicitly support `"Closed"`).
+* **Functional Logic:** `\docs\specs\functional-requirements.md` (Section 5.1).
+* **Data Schema:** `\docs\specs\data-structure.json` (`Week.Status` must now explicitly support `"Closed"`).
 * **Pre-existing Architectures:** Phase 20 (`WeeklyHabitsView` for details layout) and Phase 29 (`NotificationInbox` for deep-linking).
 
 ---
@@ -28,6 +28,7 @@ Implement a platform-native background worker (e.g., via Android `WorkManager` o
   * **Condition:** Every Monday at 9:00 AM local time, check the database for the *immediately preceding* week (the week that ended the day before, on Sunday).
   * **Action:** If that week is NOT `"Closed"`, push a Notification (via Phase 29 `INotificationService`).
   * **Payload:** Title: `"Week Ended"`, Message: `"Please review and close your previous week."`, `DeepLinkUrl`: `"lifegrid://week/{PreviousWeekID}"`.
+  * **The Notification:** Should be a push notification to the Phone and recorded also on the Notification area of the app.
 
 * **Trigger 2: The Wednesday 9 AM Auto-Close**
   * **Condition:** Every Wednesday at 9:00 AM local time, check the database for the week that ended the *previous* Sunday.
@@ -35,6 +36,7 @@ Implement a platform-native background worker (e.g., via Android `WorkManager` o
     1. Automatically execute the `CloseWeekCommand` for that `WeekID`.
     2. Push a Notification (via Phase 29 `INotificationService`).
     3. **Payload:** Title: `"Week Auto-Closed"`, Message: `"Your previous week was automatically closed by the system."`, `DeepLinkUrl`: `"lifegrid://summary/{PreviousWeekID}"`.
+* **The Notification:** Should be a push notification to the Phone and recorded also on the Notification area of the app.
 
 ---
 

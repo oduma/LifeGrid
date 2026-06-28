@@ -6,8 +6,9 @@ public sealed class WeeklyGoalGroupItem
 {
     public WeeklyGoalGroupItem(
         WeeklyGoalGroupDto dto,
-        bool               isFuture      = false,
-        bool               isCurrentWeek = false)
+        bool               isFuture         = false,
+        bool               isCurrentWeek    = false,
+        bool               isLoggingEnabled = true)
     {
         WeekGoalId         = dto.WeekGoalId;
         GoalDescription    = dto.GoalDescription;
@@ -21,7 +22,8 @@ public sealed class WeeklyGoalGroupItem
             && dto.GoalWeeklyGp >= 100.0
             && !dto.Habits.Any(h => h.HabitType == "MomentBurst");
         Habits             = dto.Habits
-            .Select(h => new WeeklyHabitItem(h, dto.GoalDescription, WeekLabel, isInteractive: !isFuture))
+            .Select(h => new WeeklyHabitItem(h, dto.GoalDescription, WeekLabel,
+                                             isInteractive: !isFuture && isLoggingEnabled))
             .ToList();
     }
 

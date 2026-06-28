@@ -4871,3 +4871,120 @@ IsInDeepDeficit = d.CurrentSp < 0;
 **P27 — Application test `CurrentMonday` constant:** Test comment stated "June 24, 2026 = Tuesday; currentMonday = June 23". June 24, 2026 is a **Wednesday**; correct Monday is **June 22**. Corrected `CurrentMonday = new(2026, 6, 22, ...)`.
 
 **P27 — Infrastructure test FK seed:** `MomentBurstHabitPersistenceTests` initially tried to insert a `Habit` with a random `WeekGoalId` directly. SQLite FK enforcement rejected it (`FOREIGN KEY constraint failed`). Fixed by seeding the full parent chain (UserProfile → Goal → Week → WeekGoal) first — following the same `SeedWeekGoalAsync` pattern established in `HabitRepositoryTests`.
+
+---
+
+# Phase 30 — Weekly Lifecycle Engine & Closure Protocol
+
+**Source:** `docs/requirements/Phase-30-requirements.md`  
+**Clarifications recorded:** 2026-06-25  
+**Implemented:** 2026-06-28  
+**Status:** DONE
+
+## P30.1 — Domain: Week Closure
+
+- Add `Closed` to the `WeekStatus` enum (after `Frozen`). `Closed` is a terminal state; the gamification engine never mutates SP/XP on a Closed week.
+- Add `Week.Close()` domain method (pure C#, no dependencies). The existing `Pause()` method remains unchanged for `Hibernated`/`Frozen` transitions.
+- `Week.EndDate` is never stored; always calculated as `StartDate.AddDays(6)` at the application layer. No new EF migration is required (WeekStatus stored as string — adding a new enum value is non-breaking).
+
+## P30.2 — Application: CloseWeekCommand
+
+- `CloseWeekCommand(Guid WeekId)` — simple handler: fetch week, call `week.Close()`, `CommitAsync()`, fire structural broadcast via `IEconomyStateBroadcaster.Broadcast()`.
+- For Phase 30, all procrastination-penalty and XP-deduction logic is **explicitly stubbed out** (deferred to a future phase).
+
+## P30.3 — Application: IPushNotificationService
+
+- New interface `IPushNotificationService` in `LifeGrid.Application.Common`:
+  - `Task SendAsync(string title, string body, string? deepLinkUrl = null)` — immediate OS-level notification
+  - `Task ScheduleAsync(string title, string body, DateTime fireAtLocal, string? deepLinkUrl = null)` — timed OS-level notification
+- Lives in Application layer so it is testable via substitution without MAUI dependencies.
+- Implementation: **`Plugin.LocalNotification 11.1.2`** in `LifeGrid.Presentation`.
+- **Implementation note:** Plugin.LocalNotification v11 API uses `Show(NotificationRequest)` (synchronous), not `ShowAsync`. Schedule property is `NotificationRequestSchedule.NotifyTime`, not `NotifyAt`.
+
+## P30.4 — Application: NotificationRouteParser Extensions
+
+- Extend `NotificationRouteParser.ToShellRoute` to handle two new URI schemes:
+  - `lifegrid://week/{id}` → `"week-detail?weekId={id}"`
+  - `lifegrid://summary/{id}` → `"week-summary?weekId={id}"`
+
+## P30.5 — Application: IWeekRepository Extension
+
+- `GetByStartDateAsync(DateTime startDate, CancellationToken ct)` was already implemented in `IWeekRepository` and `WeekRepository` from a prior phase. No new code was required.
+- Background lifecycle logic uses this method to locate the previous week by its known Monday `StartDate`.
+
+## P30.6 — Background Scheduling: Android WorkManager
+
+- Background scheduling uses **Android WorkManager** (`Xamarin.AndroidX.Work.Runtime 2.9.0.1`). Version 2.10.0.1 causes a D8 DEX compilation failure (Kotlin tracing incompatibility) and must not be used.
+- All background evaluation logic is centralized in `IWeekLifecycleSyncService` / `WeekLifecycleSyncService` (Application layer). Workers are thin wrappers that resolve this service via DI and call `EvaluateAsync()`. This ensures the logic is testable without the Android runtime.
+
+### P30.6a — Monday 9 AM: Week-Ended Prompt
+- **Condition:** Runs every Monday at 09:00 local time. Checks the immediately preceding week (StartDate = last Monday).
+- **Action if unclosed:** Push an OS notification (via `IPushNotificationService.SendAsync`) AND create an in-app `Notification` entity (via `INotificationRepository`) atomically.
+- Notification payload: Title: `"Week Ended"`, Message: `"Please review and close your previous week."`, `DeepLinkUrl`: `"lifegrid://week/{PreviousWeekID}"`.
+
+### P30.6b — Wednesday 9 AM: Auto-Close
+- **Condition:** Runs every Wednesday at 09:00 local time. Same previous-week lookup.
+- **Action if unclosed:**
+  1. Execute `CloseWeekCommand` via MediatR (first `CommitAsync`).
+  2. Create in-app `Notification` entity + second `CommitAsync`. EF Core only persists dirty entities per call — the double-commit is safe.
+  3. Push OS notification (via `IPushNotificationService.SendAsync`).
+  4. Notification payload: Title: `"Week Auto-Closed"`, Message: `"Your previous week was automatically closed by the system."`, `DeepLinkUrl`: `"lifegrid://summary/{PreviousWeekID}"`.
+
+- Workers access DI services via `IPlatformApplication.Current.Services.CreateScope()` — the standard .NET MAUI Android WorkManager DI pattern.
+- Worker namespaces use `LifeGrid.Presentation.Workers` and scheduler uses `LifeGrid.Presentation.Platform` (NOT `LifeGrid.Presentation.Platforms.Android.*`) to avoid `CS0234` caused by the compiler resolving `Android.Runtime` against the parent namespace.
+- `ExistingPeriodicWorkPolicy.Keep` is used (not `Replace`) so app restarts do not reset the scheduled trigger time.
+- `PeriodicWorkRequest.Builder.Build()` returns the base `WorkRequest` type in the .NET binding; an explicit cast to `PeriodicWorkRequest` is required.
+- `WeekLifecycleScheduler` is called in `MauiProgram.cs` within `#if ANDROID` after `builder.Build()`.
+
+## P30.7 — Presentation: WeeklyHabitsPage Lifecycle State
+
+- Closure boolean logic extracted into `WeekClosureStateComputer` (pure static class, Application layer) for testability without MAUI.
+- `WeeklyHabitsViewModel` calls `WeekClosureStateComputer.Compute(status, startDate, now)` in `LoadAsync()` to set three observable properties:
+
+| Property | Condition | XAML use |
+|---|---|---|
+| `IsCloseWeekButtonVisible` | `EndDate < Today` AND `Status != "Closed"` | Prominent primary button: `"CLOSE THE WEEK"` |
+| `IsSummaryButtonVisible` | `Status == "Closed"` | Prominent primary button: `"GO TO WEEK SUMMARY"` |
+| `IsLoggingEnabled` | `Status != "Closed"` | `isLoggingEnabled` param on `WeeklyGoalGroupItem` |
+
+- `EndDate` is calculated as `StartDate.AddDays(6)` — not persisted.
+- `CloseWeekCommand` (RelayCommand): sends `CloseWeekCommand` via MediatR; on success, calls `LoadAsync()` to refresh state.
+- `GoToSummaryAsyncCommand` (RelayCommand): navigates to `"week-summary?weekId={_weekId}"`.
+- `WeeklyGoalGroupItem` accepts `isLoggingEnabled` param; `IsInteractive = !isFuture && isLoggingEnabled`. Closed weeks render habits at 0.4 opacity via the existing `DataTrigger` on `IsInteractive`.
+- Deep-link navigation passes `weekId` as a `string` (not `Guid`) via query parameters. Both `WeeklyHabitsViewModel` and `WeekSummaryViewModel` `ApplyQueryAttributes` handle both types.
+
+## P30.8 — Presentation: WeekSummaryPage (New)
+
+- New route: `"week-summary"` → `WeekSummaryPage` (registered in `AppShell.xaml.cs`).
+- `WeekSummaryViewModel`: `IQueryAttributable`, receives `weekId`, loads via `GetWeeklyHabitsQuery`. Exposes `GoalGroups`, `WeekHeaderText`, `WeekStatusText` — no mutation commands. All groups created with `isLoggingEnabled: false`.
+- `WeekSummaryPage.xaml`: read-only replica of `WeeklyHabitsPage` layout; all `TapGestureRecognizer` and action buttons removed; title "WEEK SUMMARY".
+- Registered as `Transient` in `MauiProgram.cs`.
+
+## P30.9 — TDD Invariants (as implemented)
+
+| Test | Location | Assertion |
+|---|---|---|
+| `Close_SetsStatusToClosed` | `Domain.Tests` | `week.Status == WeekStatus.Closed` after `Close()` |
+| `Close_CalledTwice_RemainsClosedWithoutException` | `Domain.Tests` | Idempotent |
+| `CloseWeekCommand_Succeeds_CommitsAndBroadcasts` | `Application.Tests` | Handler commits + broadcasts |
+| `CloseWeekCommand_WeekNotFound_ReturnsFailure` | `Application.Tests` | Returns `Result.Failure` when repo returns null |
+| `EvaluateAsync_Wednesday_ClosesUnclosedWeek` | `Application.Tests` | `WeekLifecycleSyncService` sends `CloseWeekCommand` on Wednesday |
+| `EvaluateAsync_Monday_SendsReminderNotification` | `Application.Tests` | Adds in-app notification + fires push on Monday |
+| `EvaluateAsync_AlreadyClosed_NoOp` | `Application.Tests` | No command sent when week already Closed |
+| `GetPreviousWeekMonday_Theory` (3 cases) | `Application.Tests` | Monday/Wednesday/Sunday all resolve correctly |
+| `Compute_ActivePastWeek_ShowsCloseButton` | `Application.Tests` | `WeekClosureStateComputer` — `IsCloseWeekButtonVisible = true` |
+| `Compute_ClosedWeek_ShowsSummaryButton` | `Application.Tests` | `IsSummaryButtonVisible = true`, `IsLoggingEnabled = false` |
+| `Compute_ActiveCurrentWeek_LoggingEnabled` | `Application.Tests` | `IsLoggingEnabled = true`, buttons hidden |
+| `ToShellRoute_Week_DeepLink` | `Application.Tests` | `lifegrid://week/{id}` → `"week-detail?weekId={id}"` |
+| `ToShellRoute_Summary_DeepLink` | `Application.Tests` | `lifegrid://summary/{id}` → `"week-summary?weekId={id}"` |
+
+## P30.10 — Final Test Count
+
+| Layer | Before | New | After |
+|---|---|---|---|
+| Domain | 111 | 2 | 113 |
+| Application | 167 | 13 | 180 |
+| Infrastructure | 72 | 0 | 72 |
+| **Total** | **350** | **15** | **365** |
+
+> Note: `GetByStartDateAsync` already existed — no new Infrastructure tests were added. Application test count is 13 new (not 10 as estimated) due to the `WeekLifecycleSyncService` and `WeekClosureStateComputer` test classes.

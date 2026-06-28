@@ -37,4 +37,6 @@ public sealed class Week
     }
 
     public void MarkAsReEntry() => IsReEntryWeek = true;
+
+    public void Close() => Status = WeekStatus.Closed;
 }

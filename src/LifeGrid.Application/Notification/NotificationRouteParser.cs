@@ -9,8 +9,10 @@ public static class NotificationRouteParser
         var segments = uri.AbsolutePath.Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries);
         return uri.Host switch
         {
-            "habit" when segments.Length > 0 => $"habit-logging?HabitId={segments[0]}",
-            "goal"  when segments.Length > 0 => "goals",
+            "habit"   when segments.Length > 0 => $"habit-logging?HabitId={segments[0]}",
+            "goal"    when segments.Length > 0 => "goals",
+            "week"    when segments.Length > 0 => $"week-detail?weekId={segments[0]}",
+            "summary" when segments.Length > 0 => $"week-summary?weekId={segments[0]}",
             _ => null
         };
     }

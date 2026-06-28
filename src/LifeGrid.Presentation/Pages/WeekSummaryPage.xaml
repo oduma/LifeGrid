@@ -1,0 +1,204 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:LifeGrid.Presentation.ViewModels"
+    x:Class="LifeGrid.Presentation.Pages.WeekSummaryPage"
+    Title="Week Summary"
+    BackgroundColor="{StaticResource Background}">
+
+    <Grid RowDefinitions="Auto,*">
+
+        <!-- Zone A: Global week header (fixed) -->
+        <Border
+            Grid.Row="0"
+            Margin="16,8,16,4"
+            Padding="12,10"
+            BackgroundColor="{StaticResource Surface}"
+            StrokeShape="RoundRectangle 2"
+            StrokeThickness="1"
+            Stroke="{StaticResource SurfaceBrush}">
+            <Grid ColumnDefinitions="*,Auto">
+                <Label
+                    Grid.Column="0"
+                    Text="{Binding WeekHeaderText}"
+                    FontFamily="{StaticResource FontDMMono}"
+                    FontSize="15"
+                    FontAttributes="Bold"
+                    TextColor="{StaticResource OnSurface}"
+                    VerticalOptions="Center" />
+                <Label
+                    Grid.Column="1"
+                    Text="{Binding WeekStatusText}"
+                    FontFamily="{StaticResource FontShareTechMono}"
+                    FontSize="12"
+                    TextColor="{StaticResource Primary}"
+                    VerticalOptions="Center"
+                    HorizontalTextAlignment="End" />
+            </Grid>
+        </Border>
+
+        <!-- Zone B+C: Read-only goal groups + habit cards -->
+        <ScrollView Grid.Row="1">
+            <VerticalStackLayout
+                BindableLayout.ItemsSource="{Binding GoalGroups}"
+                Spacing="20"
+                Padding="16,8,16,16">
+
+                <BindableLayout.ItemTemplate>
+                    <DataTemplate x:DataType="vm:WeeklyGoalGroupItem">
+                        <VerticalStackLayout Spacing="8">
+
+                            <!-- Goal sub-header -->
+                            <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,0">
+                                <Label
+                                    Grid.Column="0"
+                                    Text="{Binding GoalDescription}"
+                                    FontFamily="{StaticResource FontDMMono}"
+                                    FontSize="15"
+                                    FontAttributes="Bold"
+                                    TextColor="{StaticResource OnSurface}"
+                                    VerticalOptions="Center" />
+                                <Label
+                                    Grid.Column="1"
+                                    Text="{Binding WeekLabel}"
+                                    FontFamily="{StaticResource FontShareTechMono}"
+                                    FontSize="11"
+                                    TextColor="{StaticResource OnSurface}"
+                                    Opacity="0.55"
+                                    VerticalOptions="Center" />
+                            </Grid>
+
+                            <!-- Goal metrics -->
+                            <Label
+                                Text="{Binding MetricsText}"
+                                FontFamily="{StaticResource FontShareTechMono}"
+                                FontSize="12"
+                                TextColor="{StaticResource OnSurface}"
+                                Opacity="0.75">
+                                <Label.Triggers>
+                                    <DataTrigger TargetType="Label" Binding="{Binding IsInPenalty}" Value="True">
+                                        <Setter Property="TextColor" Value="#FF7A00" />
+                                        <Setter Property="Opacity"   Value="1.0" />
+                                    </DataTrigger>
+                                </Label.Triggers>
+                            </Label>
+
+                            <!-- Zone C: Read-only habit cards -->
+                            <VerticalStackLayout
+                                BindableLayout.ItemsSource="{Binding Habits}"
+                                Spacing="8">
+
+                                <BindableLayout.EmptyView>
+                                    <Label
+                                        Text="No habits scheduled"
+                                        FontFamily="{StaticResource FontShareTechMono}"
+                                        FontSize="11"
+                                        TextColor="{StaticResource OnSurface}"
+                                        Opacity="0.4" />
+                                </BindableLayout.EmptyView>
+
+                                <BindableLayout.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:WeeklyHabitItem">
+
+                                        <Border
+                                            Padding="12,10"
+                                            Opacity="0.85"
+                                            BackgroundColor="{StaticResource Surface}"
+                                            StrokeShape="RoundRectangle 2"
+                                            StrokeThickness="1"
+                                            Stroke="{StaticResource SurfaceBrush}">
+
+                                            <VerticalStackLayout Spacing="6">
+
+                                                <!-- Standard type pill + name -->
+                                                <Grid
+                                                    ColumnDefinitions="Auto,*"
+                                                    ColumnSpacing="6">
+                                                    <Border
+                                                        Grid.Column="0"
+                                                        Padding="4,2"
+                                                        StrokeShape="RoundRectangle 2"
+                                                        StrokeThickness="1"
+                                                        Stroke="{StaticResource SurfaceBrush}"
+                                                        VerticalOptions="Center">
+                                                        <Label
+                                                            Text="{Binding HabitTypeLabel}"
+                                                            FontFamily="{StaticResource FontShareTechMono}"
+                                                            FontSize="9"
+                                                            TextColor="{StaticResource OnSurface}"
+                                                            Opacity="0.6" />
+                                                    </Border>
+                                                    <Label
+                                                        Grid.Column="1"
+                                                        Text="{Binding HabitName}"
+                                                        FontFamily="{StaticResource FontDMMono}"
+                                                        FontSize="14"
+                                                        FontAttributes="Bold"
+                                                        TextColor="{StaticResource OnSurface}"
+                                                        VerticalOptions="Center" />
+                                                </Grid>
+
+                                                <!-- Description -->
+                                                <Label
+                                                    Text="{Binding HabitDescription}"
+                                                    FontFamily="{StaticResource FontShareTechMono}"
+                                                    FontSize="12"
+                                                    TextColor="{StaticResource OnSurface}"
+                                                    Opacity="0.8"
+                                                    LineBreakMode="WordWrap" />
+
+                                                <!-- Target block -->
+                                                <Label
+                                                    Text="{Binding TargetText}"
+                                                    FontFamily="{StaticResource FontShareTechMono}"
+                                                    FontSize="11"
+                                                    TextColor="{StaticResource OnSurface}"
+                                                    Opacity="0.55" />
+
+                                                <!-- Completion log sub-list -->
+                                                <VerticalStackLayout
+                                                    BindableLayout.ItemsSource="{Binding CompletionLogs}"
+                                                    Spacing="4"
+                                                    Margin="0,4,0,0">
+
+                                                    <BindableLayout.ItemTemplate>
+                                                        <DataTemplate x:DataType="vm:HabitCompletionLogItem">
+                                                            <VerticalStackLayout Spacing="1">
+                                                                <Label
+                                                                    Text="{Binding LogSummary}"
+                                                                    FontFamily="{StaticResource FontShareTechMono}"
+                                                                    FontSize="11"
+                                                                    TextColor="{StaticResource Primary}" />
+                                                                <Label
+                                                                    Text="{Binding ProofText}"
+                                                                    FontFamily="{StaticResource FontShareTechMono}"
+                                                                    FontSize="10"
+                                                                    TextColor="{StaticResource OnSurface}"
+                                                                    Opacity="0.6"
+                                                                    IsVisible="{Binding HasProofText}"
+                                                                    LineBreakMode="WordWrap" />
+                                                            </VerticalStackLayout>
+                                                        </DataTemplate>
+                                                    </BindableLayout.ItemTemplate>
+
+                                                </VerticalStackLayout>
+
+                                            </VerticalStackLayout>
+                                        </Border>
+
+                                    </DataTemplate>
+                                </BindableLayout.ItemTemplate>
+
+                            </VerticalStackLayout>
+
+                        </VerticalStackLayout>
+                    </DataTemplate>
+                </BindableLayout.ItemTemplate>
+
+            </VerticalStackLayout>
+        </ScrollView>
+
+    </Grid>
+
+</ContentPage>

@@ -9,7 +9,7 @@
     BackgroundColor="{StaticResource Background}">
 
 
-    <Grid RowDefinitions="Auto,*">
+    <Grid RowDefinitions="Auto,Auto,*">
 
         <!-- Zone A: Global week header (fixed) -->
         <Border
@@ -40,8 +40,35 @@
             </Grid>
         </Border>
 
+        <!-- Zone A2: Lifecycle action buttons (conditional) -->
+        <VerticalStackLayout
+            Grid.Row="1"
+            Spacing="4"
+            Margin="16,4,16,0">
+            <Button
+                Text="CLOSE THE WEEK"
+                Command="{Binding CloseWeekAsyncCommand}"
+                IsVisible="{Binding IsCloseWeekButtonVisible}"
+                BackgroundColor="{StaticResource Primary}"
+                TextColor="{StaticResource OnPrimary}"
+                FontFamily="{StaticResource FontShareTechMono}"
+                FontSize="13"
+                CornerRadius="2"
+                HeightRequest="44" />
+            <Button
+                Text="GO TO WEEK SUMMARY"
+                Command="{Binding GoToSummaryAsyncCommand}"
+                IsVisible="{Binding IsSummaryButtonVisible}"
+                BackgroundColor="{StaticResource Primary}"
+                TextColor="{StaticResource OnPrimary}"
+                FontFamily="{StaticResource FontShareTechMono}"
+                FontSize="13"
+                CornerRadius="2"
+                HeightRequest="44" />
+        </VerticalStackLayout>
+
         <!-- Zone B+C: Scrollable goal groups + habit cards -->
-        <ScrollView Grid.Row="1">
+        <ScrollView Grid.Row="2">
             <VerticalStackLayout
                 BindableLayout.ItemsSource="{Binding GoalGroups}"
                 Spacing="20"
@@ -305,7 +332,7 @@
 
         <!-- Proof image overlay — full-page, above all rows -->
         <Grid
-            Grid.RowSpan="2"
+            Grid.RowSpan="3"
             IsVisible="{Binding IsProofImageOverlayVisible}"
             BackgroundColor="#CC000000">
             <Image

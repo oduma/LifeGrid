@@ -4,5 +4,6 @@ public enum WeekStatus
 {
     Active,
     Hibernated,
-    Frozen
+    Frozen,
+    Closed
 }
