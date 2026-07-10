@@ -1,6 +1,7 @@
 using LifeGrid.Application.Common;
 using LifeGrid.Application.Goal;
 using LifeGrid.Application.Habit;
+using LifeGrid.Application.UserProfile;
 using LifeGrid.Application.Week;
 using LifeGrid.Application.WeeklyHabits;
 using LifeGrid.Domain.Common;
@@ -10,10 +11,11 @@ using HabitEntity = LifeGrid.Domain.Habit.Habit;
 namespace LifeGrid.Application.Home;
 
 public sealed class GetCurrentWeekHabitsQueryHandler(
-    IWeekRepository   weekRepository,
-    IGoalRepository   goalRepository,
-    IHabitRepository  habitRepository,
-    IDateTimeProvider dateTimeProvider)
+    IWeekRepository        weekRepository,
+    IGoalRepository        goalRepository,
+    IHabitRepository       habitRepository,
+    IUserProfileRepository profileRepository,
+    IDateTimeProvider      dateTimeProvider)
     : IRequestHandler<GetCurrentWeekHabitsQuery, Result<WeeklyHabitsDashboardDto>>
 {
     public async Task<Result<WeeklyHabitsDashboardDto>> Handle(
@@ -70,11 +72,15 @@ public sealed class GetCurrentWeekHabitsQueryHandler(
                 )).ToList());
         }).ToList();
 
+        var profile          = await profileRepository.GetSingleAsync(cancellationToken);
+        var shieldsAvailable = profile?.Economy.ShieldsAvailable ?? 0;
+
         return Result<WeeklyHabitsDashboardDto>.Success(new WeeklyHabitsDashboardDto(
             week.WeekId,
             week.StartDate,
             week.Status.ToString(),
             week.TotalWeeklySpEarned,
+            shieldsAvailable,
             groups));
     }
 }

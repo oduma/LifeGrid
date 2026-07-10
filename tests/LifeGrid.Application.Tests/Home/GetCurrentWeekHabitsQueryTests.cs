@@ -3,6 +3,7 @@ using LifeGrid.Application.Common;
 using LifeGrid.Application.Goal;
 using LifeGrid.Application.Habit;
 using LifeGrid.Application.Home;
+using LifeGrid.Application.UserProfile;
 using LifeGrid.Application.Week;
 using NSubstitute;
 using GoalAggregate = LifeGrid.Domain.Goal.Goal;
@@ -13,14 +14,15 @@ namespace LifeGrid.Application.Tests.Home;
 
 public sealed class GetCurrentWeekHabitsQueryTests
 {
-    private readonly IWeekRepository                  _weekRepo  = Substitute.For<IWeekRepository>();
-    private readonly IGoalRepository                  _goalRepo  = Substitute.For<IGoalRepository>();
-    private readonly IHabitRepository                 _habitRepo = Substitute.For<IHabitRepository>();
-    private readonly IDateTimeProvider                _clock     = Substitute.For<IDateTimeProvider>();
+    private readonly IWeekRepository                  _weekRepo    = Substitute.For<IWeekRepository>();
+    private readonly IGoalRepository                  _goalRepo    = Substitute.For<IGoalRepository>();
+    private readonly IHabitRepository                 _habitRepo   = Substitute.For<IHabitRepository>();
+    private readonly IUserProfileRepository           _profileRepo = Substitute.For<IUserProfileRepository>();
+    private readonly IDateTimeProvider                _clock       = Substitute.For<IDateTimeProvider>();
     private readonly GetCurrentWeekHabitsQueryHandler _handler;
 
     public GetCurrentWeekHabitsQueryTests()
-        => _handler = new GetCurrentWeekHabitsQueryHandler(_weekRepo, _goalRepo, _habitRepo, _clock);
+        => _handler = new GetCurrentWeekHabitsQueryHandler(_weekRepo, _goalRepo, _habitRepo, _profileRepo, _clock);
 
     // ── temporal resolution ───────────────────────────────────────────────────
 

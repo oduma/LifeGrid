@@ -8,15 +8,19 @@ public sealed class WeeklyGoalGroupItem
         WeeklyGoalGroupDto dto,
         bool               isFuture         = false,
         bool               isCurrentWeek    = false,
-        bool               isLoggingEnabled = true)
+        bool               isLoggingEnabled = true,
+        bool               hasShields       = false)
     {
         WeekGoalId         = dto.WeekGoalId;
+        GoalId             = dto.GoalId;
         GoalDescription    = dto.GoalDescription;
         WeekLabel          = $"Week {dto.WeekGoalNumber}";
         PenaltyState       = dto.PenaltyState;
         GoalWeeklyGp       = dto.GoalWeeklyGp;
         GoalWeeklyXpEarned = dto.GoalWeeklyXpEarned;
-        IsInPenalty        = dto.PenaltyState is "Probation_Week_2" or "Reckoning_Week_3";
+        IsInPenalty        = dto.PenaltyState != "Clean";
+        IsLevel1Warning    = dto.PenaltyState == "Level1Warning";
+        CanUseShield       = IsLevel1Warning && hasShields;
         MetricsText        = $"GP: {dto.GoalWeeklyGp:F2}  XP: {dto.GoalWeeklyXpEarned}";
         CanRequestMomentBurst = isCurrentWeek
             && dto.GoalWeeklyGp >= 100.0
@@ -28,12 +32,15 @@ public sealed class WeeklyGoalGroupItem
     }
 
     public Guid   WeekGoalId            { get; }
+    public Guid   GoalId                { get; }
     public string GoalDescription       { get; }
     public string WeekLabel             { get; }
     public string PenaltyState          { get; }
     public double GoalWeeklyGp          { get; }
     public int    GoalWeeklyXpEarned    { get; }
     public bool   IsInPenalty           { get; }
+    public bool   IsLevel1Warning       { get; }
+    public bool   CanUseShield          { get; }
     public string MetricsText           { get; }
     public bool   CanRequestMomentBurst { get; }
     public IReadOnlyList<WeeklyHabitItem> Habits { get; }

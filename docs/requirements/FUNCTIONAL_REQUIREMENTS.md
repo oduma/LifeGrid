@@ -4988,3 +4988,196 @@ IsInDeepDeficit = d.CurrentSp < 0;
 | **Total** | **350** | **15** | **365** |
 
 > Note: `GetByStartDateAsync` already existed — no new Infrastructure tests were added. Application test count is 13 new (not 10 as estimated) due to the `WeekLifecycleSyncService` and `WeekClosureStateComputer` test classes.
+
+---
+
+# Phase 31 — Procrastination & Underachievement Engine (Weekly Escalator)
+
+**Source:** `docs/requirements/Phase-31-requirements.md`  
+**Clarifications recorded:** 2026-06-28  
+**Status:** DONE — 383 tests passing (121 Domain / 188 Application / 74 Infrastructure)
+
+## P31.1 — Clarifications Recorded
+
+| # | Question | Answer |
+|---|---|---|
+| 1 | `IsSystemReckoningLockdown` storage | **Derived at runtime** from any `Goal.Status == Overwhelmed`. No new column or EF migration. |
+| 2 | "Fix with Shield" target | Acts on the **closed week's WeekGoal** — resets `PenaltyState` from `Level1Warning → Clean`. Appears on `WeekSummaryPage` and `WeeklyHabitsPage` when viewing a closed week. |
+| 3 | Reckoning lockdown route | Uses the **existing `overwhelmed-recalculate?goalId={id}` route**. No new page needed. |
+| 4 | Navigation lockdown enforcement | **Not enforced in Phase 31.** Only auto-navigation to `overwhelmed-recalculate` on closure. Full lockdown is a future phase. |
+| 5 | Previous week PenaltyState lookup | New `IWeekRepository.GetPreviousWeekGoalAsync(Guid goalId, int currentWeekNumber)` method. Returns `null` for a goal with no prior week (first-ever week → treated as `Clean`). |
+
+## P31.2 — Domain: Escalation Engine
+
+### ProcrastinationEscalationEngine (static, `LifeGrid.Domain.Gamification`)
+
+Pure static calculation class. Takes the previous week's `PenaltyState`, the closing week's `GoalWeeklyGp`, and the closing week's `GoalWeeklyXpEarned`; returns an `EscalationResult` record.
+
+**State machine rules (per goal):**
+
+| Previous State | GP condition | New State | XP result | Overwhelmed |
+|---|---|---|---|---|
+| `Clean` | GP ≤ 80% | `Level1Warning` | unchanged | no |
+| `Clean` | GP > 80% | `Clean` | unchanged | no |
+| `Level1Warning` | GP = 100% | `Clean` | unchanged | no |
+| `Level1Warning` | GP < 100% | `ProbationWeek2` | `Math.Floor(xp / 2.0)` | no |
+| `ProbationWeek2` | GP = 100% | `Clean` | unchanged | no |
+| `ProbationWeek2` | GP < 100% | `ReckoningWeek3` | `0` | **yes** |
+
+The 80% threshold is **inclusive** (GP of exactly 80% triggers `Level1Warning`). 100% clearance is **exact** (GP of 99.999% does not clear). XP rounding uses `Math.Floor` (integer truncation on halving).
+
+**`EscalationResult` record:**
+```csharp
+public record EscalationResult(PenaltyState NewPenaltyState, int PenalizedXp, bool TriggersOverwhelmed);
+```
+
+### WeekGoal entity additions
+
+- `public void SetPenaltyState(PenaltyState state)` — sets `PenaltyState`
+- `public void ApplyXpPenalty(int penalizedXp)` — replaces `GoalWeeklyXpEarned` (not additive)
+
+### Goal entity additions
+
+- `public void MarkOverwhelmed()` — sets `Status = GoalStatus.Overwhelmed`
+
+## P31.3 — Application: CloseWeekCommand Updated
+
+`CloseWeekCommand` return type changes from `Result` to `Result<CloseWeekCommandResult>`.
+
+```csharp
+public record CloseWeekCommandResult(Guid? OverwhelmedGoalId);
+```
+
+Updated handler execution order (all changes are EF-tracked and committed atomically):
+
+1. Load week (includes WeekGoals via existing EF `Include`)
+2. For each `WeekGoal` in `week.WeekGoals`:
+   a. `previousWeekGoal = await weekRepo.GetPreviousWeekGoalAsync(wg.GoalId, week.WeekNumber, ct)`
+   b. `previousState = previousWeekGoal?.PenaltyState ?? PenaltyState.Clean`
+   c. `result = ProcrastinationEscalationEngine.Evaluate(previousState, wg.GoalWeeklyGp, wg.GoalWeeklyXpEarned)`
+   d. `wg.SetPenaltyState(result.NewPenaltyState)`
+   e. `wg.ApplyXpPenalty(result.PenalizedXp)` — only called when XP changes (i.e., `result.TriggersOverwhelmed || newState == ProbationWeek2`)
+   f. If `result.TriggersOverwhelmed`: `goal = await goalRepo.GetByIdAsync(wg.GoalId, ct)` → `goal.MarkOverwhelmed()` → capture `overwhelmedGoalId`
+3. `week.Close()`
+4. `await unitOfWork.CommitAsync(ct)` — single atomic commit: WeekGoal mutations + Goal.Status + Week.Status
+5. `broadcaster.Broadcast()`
+6. Return `Result<CloseWeekCommandResult>.Success(new(overwhelmedGoalId))`
+
+`WeekLifecycleSyncService.HandleWednesdayAsync` consumes the updated return type but ignores `OverwhelmedGoalId` (background auto-close does not navigate).
+
+## P31.4 — Application: UseShieldCommand (New)
+
+```csharp
+public record UseShieldCommand(Guid WeekGoalId) : IRequest<Result>;
+```
+
+Handler logic:
+1. Load `WeekGoal` — return `Failure("weekgoal_not_found")` if null
+2. Guard: `weekGoal.PenaltyState != PenaltyState.Level1Warning` → return `Failure("invalid_state")`
+3. Load `UserProfile` — return `Failure("profile_not_found")` if null
+4. `if (!userProfile.ConsumeShield())` → return `Failure("no_shields")`
+5. `weekGoal.SetPenaltyState(PenaltyState.Clean)`
+6. `await unitOfWork.CommitAsync(ct)`
+7. `broadcaster.Broadcast()`
+8. Return `Result.Success()`
+
+The shield deduction and PenaltyState reset are committed atomically. The result propagates to `ShieldsAvailable` in the UI via the `EconomyStateMutatedMessage` broadcast (same pattern as all other economy mutations).
+
+## P31.5 — Application: IWeekRepository Extension
+
+New method:
+```csharp
+Task<WeekGoalEntity?> GetPreviousWeekGoalAsync(Guid goalId, int currentWeekNumber, CancellationToken ct = default);
+```
+
+Returns the `WeekGoal` for `goalId` belonging to the most recent week with `WeekNumber < currentWeekNumber`. Returns `null` if no such record exists (first week for this goal — caller treats it as `PenaltyState.Clean`).
+
+## P31.6 — Application: GetWeeklyHabitsQuery / DTO Extension
+
+Add `ShieldsAvailable: int` to `WeeklyHabitsDashboardDto`. **Both `GetWeeklyHabitsQueryHandler` and `GetCurrentWeekHabitsQueryHandler`** load `IUserProfileRepository.GetSingleAsync()` and include `Economy.ShieldsAvailable` in the response. Both `WeeklyHabitsViewModel` and `WeekSummaryViewModel` use this to gate the "Fix with Shield" button visibility.
+
+> **Implementation note:** The original plan only called out `GetWeeklyHabitsQueryHandler`. `GetCurrentWeekHabitsQueryHandler` also constructs `WeeklyHabitsDashboardDto` and required the same `IUserProfileRepository` injection to avoid a constructor arity error.
+
+## P31.7 — Presentation: WeeklyGoalGroupItem Bug Fix + Additions
+
+**Pre-existing bug:** `IsInPenalty` checked for `"Probation_Week_2"` and `"Reckoning_Week_3"` (underscores). The actual string from `PenaltyState.ToString()` via `.HasConversion<string>()` is `"ProbationWeek2"` and `"ReckoningWeek3"` (no underscores). This must be fixed.
+
+Updated computed properties:
+
+| Property | Value |
+|---|---|
+| `IsInPenalty` | `dto.PenaltyState != "Clean"` |
+| `IsLevel1Warning` | `dto.PenaltyState == "Level1Warning"` |
+| `GoalId` | `dto.GoalId` (new — needed for shield command parameter) |
+
+## P31.8 — Presentation: ViewModel Updates
+
+**Both `WeeklyHabitsViewModel` and `WeekSummaryViewModel`:**
+- Add `[ObservableProperty] private bool _hasShieldsAvailable;`
+- Set in `LoadAsync()`: `HasShieldsAvailable = dto.ShieldsAvailable > 0;`
+- Add `UseShieldAsyncCommand(WeeklyGoalGroupItem item)` RelayCommand → sends `UseShieldCommand(item.WeekGoalId)` → calls `LoadAsync()` on success
+
+**`WeeklyHabitsViewModel.CloseWeekAsync` update:**
+```csharp
+var result = await _mediator.Send(new CloseWeekCommand(_weekId));
+if (!result.IsSuccess) return;
+if (result.Value?.OverwhelmedGoalId is { } gid)
+    await Shell.Current.GoToAsync($"overwhelmed-recalculate?goalId={gid}");
+else
+    await LoadAsync();
+```
+
+## P31.9 — Presentation: XAML Updates
+
+**`WeeklyHabitsPage.xaml` and `WeekSummaryPage.xaml` — per goal group block:**
+
+1. **Warning icon** — rendered adjacent to `GoalDescription` label:
+   - Icon: Material Symbol `warning` (glyph `&#xE002;`)
+   - Color: `Error` token (`#FFFF1B77` from `style-guide.md`)
+   - `IsVisible="{Binding IsInPenalty}"`
+
+2. **"Fix with Shield" button** — rendered within the goal group block:
+   - Text: `"FIX WITH SHIELD"`
+   - `IsVisible` bound to `CanUseShield` computed property on `WeeklyGoalGroupItem` (combines `IsLevel1Warning` on the item AND the `hasShields` constructor param; avoids MAUI `MultiBinding` complexity)
+   - Command: `UseShieldCommand` on the VM (CommunityToolkit.MVVM strips `Async` suffix from generated command names), `CommandParameter` = the `WeeklyGoalGroupItem`
+   - Style: `Error` background (`#FFFF1B77`), `OnPrimary` text color, `CornerRadius="2"`
+
+> **Implementation note (visibility):** The original plan spec'd `MultiBinding` or `IValueConverter` for the shield button visibility. The actual implementation uses a `CanUseShield` computed property on `WeeklyGoalGroupItem` that takes `hasShields` as a constructor parameter, consistent with the existing `isLoggingEnabled` pattern in the same class. This is simpler and avoids MAUI's `MultiBinding` limitations.
+
+> **Implementation note (command binding names — post-completion fix):** CommunityToolkit.MVVM 8.4.2's `[RelayCommand]` source generator strips the `Async` suffix when generating the command property name. The initial XAML was written with incorrect names (`CloseWeekAsyncCommand`, `GoToSummaryAsyncCommand`, `UseShieldAsyncCommand`). These were corrected post-completion to `CloseWeekCommand`, `GoToSummaryCommand`, and `UseShieldCommand` across both `WeeklyHabitsPage.xaml` and `WeekSummaryPage.xaml`. The working bindings in the same file (`OpenHabitLoggingCommand`, `IWantMoreCommand`) already followed the correct pattern.
+
+## P31.10 — TDD Invariants
+
+| Test | Layer | Assertion |
+|---|---|---|
+| `Clean_GpAt79_TransitionsToLevel1Warning` | Domain | `NewPenaltyState == Level1Warning` |
+| `Clean_GpAt80_TransitionsToLevel1Warning` | Domain | Boundary inclusive |
+| `Clean_GpAt81_RemainsClean` | Domain | `NewPenaltyState == Clean` |
+| `Level1Warning_GpAt100_ClearsToClean` | Domain | `NewPenaltyState == Clean`, XP unchanged |
+| `Level1Warning_GpAt95_100Xp_SetsProbation_50Xp` | Domain | `PenalizedXp == 50`, `NewPenaltyState == ProbationWeek2` |
+| `Level1Warning_GpAt99_OddXp_SetsProbation_FloorHalves` | Domain | `Math.Floor` applied (e.g. 7 XP → 3) |
+| `ProbationWeek2_GpAt100_ClearsToClean` | Domain | `NewPenaltyState == Clean`, `TriggersOverwhelmed == false` |
+| `ProbationWeek2_GpAt99_TriggersReckoning_ZerosXp` | Domain | `PenalizedXp == 0`, `TriggersOverwhelmed == true` |
+| `CloseWeekCommand_CleanGoal_Below80_SetsLevel1Warning` | Application | WeekGoal.PenaltyState persisted as Level1Warning |
+| `CloseWeekCommand_Level1Warning_Below100_HalvesXp_SetsProbation` | Application | XP halved + ProbationWeek2 |
+| `CloseWeekCommand_Probation_Below100_ZerosXp_SetsReckoning_MarksGoalOverwhelmed` | Application | XP=0, Goal.Status=Overwhelmed, OverwhelmedGoalId set |
+| `CloseWeekCommand_NoPreviousWeekGoal_TreatedAsClean` | Application | First week defaults to Clean baseline |
+| `UseShield_Level1Warning_ConsumesShieldAndClearsState` | Application | PenaltyState → Clean, ShieldsAvailable decremented |
+| `UseShield_NoShields_ReturnsFailure` | Application | `Failure("no_shields")` |
+| `UseShield_NotLevel1Warning_ReturnsFailure` | Application | Guard enforced |
+| `UseShield_WeekGoalNotFound_ReturnsFailure` | Application | `Failure("weekgoal_not_found")` |
+| `GetPreviousWeekGoal_HasPreviousWeek_ReturnsPreviousWeekGoal` | Infrastructure | Correct entity returned |
+| `GetPreviousWeekGoal_NoPreviousWeek_ReturnsNull` | Infrastructure | null when first week |
+
+## P31.11 — Estimated Test Count
+
+| Layer | Before | New | After |
+|---|---|---|---|
+| Domain | 113 | 8 | 121 |
+| Application | 180 | 8 | 188 |
+| Infrastructure | 72 | 2 | 74 |
+| **Total** | **365** | **18** | **383** |
+
+## P31.12 — EF Migration
+
+No migration required. `PenaltyState` is already persisted via `.HasConversion<string>()` — no schema changes. `Goal.Status` (`GoalStatus.Overwhelmed`) is also already mapped as string. The `WeekGoal.SetPenaltyState` and `WeekGoal.ApplyXpPenalty` methods mutate already-mapped columns.

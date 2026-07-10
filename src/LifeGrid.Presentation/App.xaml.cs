@@ -7,6 +7,7 @@ using LifeGrid.Infrastructure.Security;
 using LifeGrid.Presentation.ViewModels;
 using MediatR;
 using Microsoft.Extensions.DependencyInjection;
+using Plugin.LocalNotification;
 
 namespace LifeGrid.Presentation;
 
@@ -43,6 +44,7 @@ public partial class App
     protected override async void OnStart()
     {
         base.OnStart();
+        await LocalNotificationCenter.Current.RequestNotificationPermission();
         await _credentialSync.SyncAsync();
         await _mediator.Send(new GetOrCreateUserProfileQuery());
 

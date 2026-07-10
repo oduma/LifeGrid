@@ -1,26 +1,28 @@
 using FluentAssertions;
 using LifeGrid.Application.Goal;
 using LifeGrid.Application.Habit;
+using LifeGrid.Application.UserProfile;
 using LifeGrid.Application.Week;
 using LifeGrid.Application.WeeklyHabits;
 using NSubstitute;
-using GoalAggregate  = LifeGrid.Domain.Goal.Goal;
-using HabitEntity    = LifeGrid.Domain.Habit.Habit;
+using GoalAggregate     = LifeGrid.Domain.Goal.Goal;
+using HabitEntity       = LifeGrid.Domain.Habit.Habit;
 using UserProfileEntity = LifeGrid.Domain.UserProfile.UserProfile;
-using WeekEntity     = LifeGrid.Domain.Week.Week;
-using WeekGoalEntity = LifeGrid.Domain.WeekGoal.WeekGoal;
+using WeekEntity        = LifeGrid.Domain.Week.Week;
+using WeekGoalEntity    = LifeGrid.Domain.WeekGoal.WeekGoal;
 
 namespace LifeGrid.Application.Tests.WeeklyHabits;
 
 public sealed class GetWeeklyHabitsQueryTests
 {
-    private readonly IWeekRepository               _weekRepo   = Substitute.For<IWeekRepository>();
-    private readonly IGoalRepository               _goalRepo   = Substitute.For<IGoalRepository>();
-    private readonly IHabitRepository              _habitRepo  = Substitute.For<IHabitRepository>();
-    private readonly GetWeeklyHabitsQueryHandler   _handler;
+    private readonly IWeekRepository             _weekRepo    = Substitute.For<IWeekRepository>();
+    private readonly IGoalRepository             _goalRepo    = Substitute.For<IGoalRepository>();
+    private readonly IHabitRepository            _habitRepo   = Substitute.For<IHabitRepository>();
+    private readonly IUserProfileRepository      _profileRepo = Substitute.For<IUserProfileRepository>();
+    private readonly GetWeeklyHabitsQueryHandler _handler;
 
     public GetWeeklyHabitsQueryTests()
-        => _handler = new GetWeeklyHabitsQueryHandler(_weekRepo, _goalRepo, _habitRepo);
+        => _handler = new GetWeeklyHabitsQueryHandler(_weekRepo, _goalRepo, _habitRepo, _profileRepo);
 
     // ── helpers ──────────────────────────────────────────────────────────────
 

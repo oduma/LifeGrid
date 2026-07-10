@@ -1,4 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using LifeGrid.Application.Week;
 using LifeGrid.Application.WeeklyHabits;
 using MediatR;
 using System.Collections.ObjectModel;
@@ -15,8 +17,9 @@ public partial class WeekSummaryViewModel : ObservableObject, IQueryAttributable
         _mediator = mediator;
     }
 
-    [ObservableProperty] private string _weekHeaderText = string.Empty;
-    [ObservableProperty] private string _weekStatusText = string.Empty;
+    [ObservableProperty] private string _weekHeaderText      = string.Empty;
+    [ObservableProperty] private string _weekStatusText      = string.Empty;
+    [ObservableProperty] private bool   _hasShieldsAvailable;
 
     public ObservableCollection<WeeklyGoalGroupItem> GoalGroups { get; } = new();
 
@@ -35,12 +38,22 @@ public partial class WeekSummaryViewModel : ObservableObject, IQueryAttributable
         if (!result.IsSuccess) return;
 
         var dto = result.Value!;
-        WeekHeaderText = dto.StartDate.ToString("MMM dd, yyyy");
-        WeekStatusText = $"{dto.Status}  |  SP: {dto.TotalWeeklySpEarned}";
+        WeekHeaderText      = dto.StartDate.ToString("MMM dd, yyyy");
+        WeekStatusText      = $"{dto.Status}  |  SP: {dto.TotalWeeklySpEarned}";
+        HasShieldsAvailable = dto.ShieldsAvailable > 0;
 
         GoalGroups.Clear();
         foreach (var g in dto.GoalGroups)
             GoalGroups.Add(new WeeklyGoalGroupItem(g,
-                isFuture: false, isCurrentWeek: false, isLoggingEnabled: false));
+                isFuture: false, isCurrentWeek: false, isLoggingEnabled: false,
+                hasShields: dto.ShieldsAvailable > 0));
+    }
+
+    [RelayCommand]
+    private async Task UseShieldAsync(WeeklyGoalGroupItem item)
+    {
+        var result = await _mediator.Send(new UseShieldCommand(item.WeekGoalId));
+        if (result.IsSuccess)
+            await LoadAsync();
     }
 }

@@ -286,7 +286,7 @@ The user triggers an explicit "Overwhelmed" action for a specific goal.
 * **Emergency Freeze Action (Reactive Pause):** The target week has *already started* AND the day is strictly *before Friday*. User inputs an emergency reason; week is frozen, protecting metrics from end-of-week penalty degradation. Costs **1 Life Happens Shield** as a processing fee.
 * **Re-Entry Week:** If a user freezes for 2+ consecutive weeks, the app automatically scales down measurement metrics by 30% for the returning week.
 
-#### 4.3.3 The Shield Economy (SP to Shield Transition)
+#### 4.3.3 The Shield Economy (SP to Shield Transition) (Done)
 * **Earning:** The app tracks accumulated `Current_SP`. Every time the user reaches a milestone of **30 SP**, the counter resets to zero and grants **1 Life Happens Shield**.
 * **Cap:** Strict maximum inventory cap of 2 Shields (3 if the Optional Survey was completed).
 
@@ -300,7 +300,7 @@ The user triggers an explicit "Overwhelmed" action for a specific goal.
 
 ## 5. End of the Week
 
-### 5.1 Display the Week Summary
+### 5.1 Display the Week Summary (Done)
 A read-only dashboard triggered strictly after the a given week is closed. 
 * At 9 am local time on every Monday the app should send a notification to the user telling him that their previous week has finished and from that notification it should be a link to the previous Week.
 * If the user clicks on the link it should open the application presenting them the detailed view of the previous week with an action on it close the week.
@@ -321,11 +321,11 @@ A read-only dashboard triggered strictly after the a given week is closed.
 * This of course should repeat for every single week.
 * Displays Global Metrics Breakdown (XP/SP) and Goal-Specific GP vs Lifetime Average.
 
-#### 5.1.1 The Procrastination & Under-Achievement Escalator
+#### 5.1.1 The Procrastination & Under-Achievement Escalator (Done)
 **The Procrastination & Underachievement Calculator:**
-Upon loading the summary, the engine runs a silent calculation against every individual goal assigned to that week to evaluate completion deficits. Which means calculation against all the habits associated with each of the goal for that week. 
+When closing the week, the engine runs a silent calculation against every individual goal assigned to that week to evaluate completion deficits. Which means calculation against all the habits associated with each of the goal for that week. 
 * *Clean State:* If a habit's target was met or fell within acceptable tolerances (no penalty triggered), the system remains silent and displays no penalty indicators.
-* *Level 1 Warning State:* If a habit qualifies for a penalty, the UI flags it with a prominent **Level 1 Warning** directly adjacent to all the specific habits belonging to the goal that was underachieved for that week.
+* *Level 1 Warning State:* If a week goal qualifies for a penalty (<=80%), the UI flags it with a prominent **Level 1 Warning** directly adjacent the week goal.
 
 **Shield Mitigation (Fix with Shield):**
 If a Level 1 Warning is triggered, the user can expend a "Life Happens Shield" via the **"Fix with Shield"** button to clear it. If not, the user enters the subsequent week carrying this specific warning level for all the habits belonging to that goal.
@@ -361,5 +361,5 @@ Tracks 100% Weekly Goal Success Scores based on the absolute number of goals con
 
 ---
 
-## 7. Notification Area
+## 7. Notification Area (Done)
 * **Screen Overview:** A dedicated inbox for the user displaying a historical log of Push Notifications (Momentum Burst Quests, penalty warnings) and System Messages (Shield inventory updates, Weekly Recap notices). Deep-links directly to relevant goals or habits.

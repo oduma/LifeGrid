@@ -89,4 +89,14 @@ internal sealed class WeekRepository(LifeGridDbContext db) : IWeekRepository
         => db.Weeks
              .Include(w => w.WeekGoals)
              .FirstOrDefaultAsync(w => w.WeekNumber == weekNumber, ct);
+
+    public Task<WeekGoalEntity?> GetPreviousWeekGoalAsync(
+        Guid goalId, int currentWeekNumber, CancellationToken ct = default)
+        => db.WeekGoals
+             .Join(db.Weeks, wg => wg.WeekId, w => w.WeekId,
+                   (wg, w) => new { WeekGoal = wg, w.WeekNumber })
+             .Where(x => x.WeekGoal.GoalId == goalId && x.WeekNumber < currentWeekNumber)
+             .OrderByDescending(x => x.WeekNumber)
+             .Select(x => x.WeekGoal)
+             .FirstOrDefaultAsync(ct);
 }

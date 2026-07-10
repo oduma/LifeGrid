@@ -132,6 +132,50 @@ public sealed class WeekRepositoryTests : IDisposable
         result.Should().BeNull();
     }
 
+    // ── GetPreviousWeekGoalAsync ──────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetPreviousWeekGoalAsync_HasPreviousWeek_ReturnsPreviousWeekGoal()
+    {
+        var goalId     = await SeedGoalAsync();
+        var repository = new WeekRepository(_db);
+
+        // Week 1 (previous)
+        var week1     = WeekEntity.Create(1, new DateTime(2026, 6, 16));
+        var weekGoal1 = WeekGoalEntity.Create(week1.WeekId, goalId, 1);
+        await repository.AddAsync(week1, weekGoal1);
+
+        // Week 2 (current)
+        var week2     = WeekEntity.Create(2, new DateTime(2026, 6, 23));
+        var weekGoal2 = WeekGoalEntity.Create(week2.WeekId, goalId, 2);
+        await repository.AddAsync(week2, weekGoal2);
+
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        var result = await repository.GetPreviousWeekGoalAsync(goalId, currentWeekNumber: 2);
+
+        result.Should().NotBeNull();
+        result!.WeekGoalId.Should().Be(weekGoal1.WeekGoalId);
+    }
+
+    [Fact]
+    public async Task GetPreviousWeekGoalAsync_NoPreviousWeek_ReturnsNull()
+    {
+        var goalId     = await SeedGoalAsync();
+        var repository = new WeekRepository(_db);
+
+        var week1     = WeekEntity.Create(1, new DateTime(2026, 6, 16));
+        var weekGoal1 = WeekGoalEntity.Create(week1.WeekId, goalId, 1);
+        await repository.AddAsync(week1, weekGoal1);
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        var result = await repository.GetPreviousWeekGoalAsync(goalId, currentWeekNumber: 1);
+
+        result.Should().BeNull();
+    }
+
     // ── AddWeekGoalAsync ──────────────────────────────────────────────────────
 
     [Fact]

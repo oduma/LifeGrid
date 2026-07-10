@@ -35,6 +35,7 @@ public partial class WeeklyHabitsViewModel : ObservableObject, IQueryAttributabl
     [ObservableProperty] private bool    _isCloseWeekButtonVisible;
     [ObservableProperty] private bool    _isSummaryButtonVisible;
     [ObservableProperty] private bool    _isLoggingEnabled         = true;
+    [ObservableProperty] private bool    _hasShieldsAvailable;
 
     public ObservableCollection<WeeklyGoalGroupItem> GoalGroups { get; } = new();
 
@@ -72,11 +73,13 @@ public partial class WeeklyHabitsViewModel : ObservableObject, IQueryAttributabl
         IsLoggingEnabled         = isLogging;
         IsCloseWeekButtonVisible = isClose;
         IsSummaryButtonVisible   = isSummary;
+        HasShieldsAvailable      = dto.ShieldsAvailable > 0;
 
         GoalGroups.Clear();
         foreach (var g in dto.GoalGroups)
             GoalGroups.Add(new WeeklyGoalGroupItem(g, isFuture, isCurrentWeek,
-                                                   isLoggingEnabled: isLogging));
+                                                   isLoggingEnabled: isLogging,
+                                                   hasShields: dto.ShieldsAvailable > 0));
     }
 
     [RelayCommand]
@@ -153,11 +156,36 @@ public partial class WeeklyHabitsViewModel : ObservableObject, IQueryAttributabl
     }
 
     [RelayCommand]
-    private async Task CloseWeekAsync()
+    private async Task UseShieldAsync(WeeklyGoalGroupItem item)
     {
-        var result = await _mediator.Send(new CloseWeekCommand(_weekId));
+        var result = await _mediator.Send(new UseShieldCommand(item.WeekGoalId));
         if (result.IsSuccess)
             await LoadAsync();
+    }
+
+    [RelayCommand]
+    private async Task CloseWeekAsync()
+    {
+        try
+        {
+            var result = await _mediator.Send(new CloseWeekCommand(_weekId));
+            if (!result.IsSuccess)
+            {
+                await Shell.Current.CurrentPage.DisplayAlertAsync(
+                    "Close Failed", result.Error ?? "An error occurred closing the week.", "OK");
+                return;
+            }
+
+            if (result.Value?.OverwhelmedGoalId is { } gid)
+                await Shell.Current.GoToAsync($"overwhelmed-recalculate?goalId={gid}");
+            else
+                await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            await Shell.Current.CurrentPage.DisplayAlertAsync(
+                "Close Failed", ex.Message, "OK");
+        }
     }
 
     [RelayCommand]

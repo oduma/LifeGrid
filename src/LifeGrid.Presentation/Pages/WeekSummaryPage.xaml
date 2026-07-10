@@ -4,6 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:vm="clr-namespace:LifeGrid.Presentation.ViewModels"
     x:Class="LifeGrid.Presentation.Pages.WeekSummaryPage"
+    x:Name="PageRoot"
     Title="Week Summary"
     BackgroundColor="{StaticResource Background}">
 
@@ -68,6 +69,42 @@
                                     Opacity="0.55"
                                     VerticalOptions="Center" />
                             </Grid>
+
+                            <!-- Penalty warning flag -->
+                            <Grid
+                                ColumnDefinitions="Auto,*"
+                                ColumnSpacing="6"
+                                Margin="0,2,0,0"
+                                IsVisible="{Binding IsInPenalty}">
+                                <Label
+                                    Grid.Column="0"
+                                    Text="&#xE002;"
+                                    FontFamily="MaterialSymbolsRounded"
+                                    FontSize="16"
+                                    TextColor="{StaticResource Error}"
+                                    VerticalOptions="Center" />
+                                <Label
+                                    Grid.Column="1"
+                                    Text="PENALTY ACTIVE"
+                                    FontFamily="{StaticResource FontShareTechMono}"
+                                    FontSize="11"
+                                    TextColor="{StaticResource Error}"
+                                    VerticalOptions="Center" />
+                            </Grid>
+
+                            <!-- Fix with Shield -->
+                            <Button
+                                Text="FIX WITH SHIELD"
+                                IsVisible="{Binding CanUseShield}"
+                                Command="{Binding BindingContext.UseShieldCommand,
+                                          Source={x:Reference PageRoot}}"
+                                CommandParameter="{Binding .}"
+                                BackgroundColor="{StaticResource Error}"
+                                TextColor="{StaticResource OnPrimary}"
+                                FontFamily="{StaticResource FontShareTechMono}"
+                                FontSize="12"
+                                CornerRadius="2"
+                                HeightRequest="38" />
 
                             <!-- Goal metrics -->
                             <Label

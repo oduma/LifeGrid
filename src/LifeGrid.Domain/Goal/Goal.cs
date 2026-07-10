@@ -45,7 +45,8 @@ public sealed class Goal
     public IReadOnlyCollection<LinkedBadHabit>       LinkedBadHabits   => _linkedBadHabits.AsReadOnly();
     public IReadOnlyCollection<GoalRefinementAnswer> RefinementAnswers => _refinementAnswers.AsReadOnly();
 
-    public void MarkAbandoned() => Status = GoalStatus.Abandoned;
+    public void MarkAbandoned()   => Status = GoalStatus.Abandoned;
+    public void MarkOverwhelmed() => Status = GoalStatus.Overwhelmed;
 
     public void ExtendDeadlineByPercent(double percent)
     {

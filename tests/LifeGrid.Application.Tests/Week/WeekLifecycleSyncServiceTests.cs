@@ -37,7 +37,7 @@ public sealed class WeekLifecycleSyncServiceTests
         _weekRepo.GetByStartDateAsync(Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
                  .Returns(week);
         _sender.Send(Arg.Any<CloseWeekCommand>(), Arg.Any<CancellationToken>())
-               .Returns(Task.FromResult(Result.Success()));
+               .Returns(Task.FromResult(Result<CloseWeekCommandResult>.Success(new(null))));
 
         await BuildService().EvaluateAsync();
 
@@ -93,7 +93,7 @@ public sealed class WeekLifecycleSyncServiceTests
 
         await BuildService().EvaluateAsync();
 
-        await _sender.DidNotReceive().Send(Arg.Any<IRequest<Result>>(), Arg.Any<CancellationToken>());
+        await _sender.DidNotReceive().Send(Arg.Any<CloseWeekCommand>(), Arg.Any<CancellationToken>());
         await _notifRepo.DidNotReceive().AddAsync(Arg.Any<NotificationEntity>(), Arg.Any<CancellationToken>());
         await _push.DidNotReceive().SendAsync(Arg.Any<string>(), Arg.Any<string>(),
             Arg.Any<string?>(), Arg.Any<CancellationToken>());

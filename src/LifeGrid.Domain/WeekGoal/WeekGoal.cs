@@ -26,6 +26,9 @@ public sealed class WeekGoal
     internal void SetGoalWeeklyGp(double value)    => GoalWeeklyGp = value;
     internal void SetGoalWeeklyXpEarned(int value) => GoalWeeklyXpEarned = value;
 
+    public void SetPenaltyState(PenaltyState state) => PenaltyState = state;
+    public void ApplyXpPenalty(int penalizedXp)     => GoalWeeklyXpEarned = penalizedXp;
+
     public void RecordMetricsUpdate(double newGp, int additionalXpEarned)
     {
         GoalWeeklyGp       = newGp;
