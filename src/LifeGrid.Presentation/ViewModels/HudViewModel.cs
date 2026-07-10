@@ -45,6 +45,7 @@ public partial class HudViewModel : ObservableObject
     [ObservableProperty] private string _spWeekly      = "0";
     [ObservableProperty] private string _shieldsActive = "0";
     [ObservableProperty] private string _shieldsCap    = "0";
+    [ObservableProperty] private bool   _isDoubleXpActive;
 
     [NotifyPropertyChangedFor(nameof(HasUnread))]
     [ObservableProperty] private int _unreadCount;
@@ -73,6 +74,7 @@ public partial class HudViewModel : ObservableObject
             SpWeekly        = d.WeeklySpEarned.ToString();
             ShieldsActive   = d.ActiveShields.ToString();
             ShieldsCap      = d.ShieldCap.ToString();
+            IsDoubleXpActive = d.IsDoubleXpActive;
             UnreadCount     = countResult.IsSuccess ? countResult.Value : 0;
         });
     }

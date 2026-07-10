@@ -20,7 +20,7 @@ public sealed class GetHudTelemetryQueryHandler(
     {
         var profile = await userProfileRepository.GetSingleAsync(cancellationToken);
         if (profile is null)
-            return Result<HudTelemetryDto>.Success(new HudTelemetryDto(0, 0.0, 0.0, 0, 0, 0, 0, 0, 2));
+            return Result<HudTelemetryDto>.Success(new HudTelemetryDto(0, 0.0, 0.0, 0, 0, 0, 0, 0, 2, false));
 
         var today         = dateTimeProvider.UtcNow.Date;
         int daysFromMon   = ((int)today.DayOfWeek - (int)DayOfWeek.Monday + 7) % 7;
@@ -36,7 +36,8 @@ public sealed class GetHudTelemetryQueryHandler(
                 profile.Economy.CurrentSp,
                 0,
                 profile.Economy.ShieldsAvailable,
-                profile.Economy.MaxShieldCap));
+                profile.Economy.MaxShieldCap,
+                profile.IsDoubleXpActive(dateTimeProvider.UtcNow)));
 
         var weekGoals = week.WeekGoals.ToList();
         var weeklyGp  = weekGoals.Count > 0 ? weekGoals.Average(wg => wg.GoalWeeklyGp) : 0.0;
@@ -51,6 +52,7 @@ public sealed class GetHudTelemetryQueryHandler(
             profile.Economy.CurrentSp,
             week.TotalWeeklySpEarned,
             profile.Economy.ShieldsAvailable,
-            profile.Economy.MaxShieldCap));
+            profile.Economy.MaxShieldCap,
+            profile.IsDoubleXpActive(dateTimeProvider.UtcNow)));
     }
 }

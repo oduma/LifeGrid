@@ -12,4 +12,12 @@ public sealed class UserActiveStates
 
     public bool     DoubleXpMode   { get; private set; }
     public DateTime DoubleXpExpiry { get; private set; }
+
+    internal void ActivateDoubleXp(DateTime expiry)
+    {
+        DoubleXpMode   = true;
+        DoubleXpExpiry = expiry;
+    }
+
+    public bool IsDoubleXpActive(DateTime now) => DoubleXpMode && now < DoubleXpExpiry;
 }

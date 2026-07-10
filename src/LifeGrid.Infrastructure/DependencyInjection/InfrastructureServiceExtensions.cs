@@ -1,5 +1,6 @@
 using LifeGrid.Application.Badge;
 using LifeGrid.Application.Common;
+using LifeGrid.Application.FlashQuest;
 using LifeGrid.Application.Goal;
 using LifeGrid.Application.Habit;
 using LifeGrid.Application.MomentBurst;
@@ -57,6 +58,7 @@ public static class InfrastructureServiceExtensions
         services.AddTransient<IGeminiHabitGenerationService, GeminiHabitGenerationService>();
         services.AddTransient<IGeminiViceSurveyService, GeminiViceSurveyService>();
         services.AddTransient<IGeminiMomentBurstService, GeminiMomentBurstService>();
+        services.AddTransient<IGeminiFlashQuestService, GeminiFlashQuestService>();
         services.AddTransient<IFactoryResetService, FactoryResetService>();
 
         return services;

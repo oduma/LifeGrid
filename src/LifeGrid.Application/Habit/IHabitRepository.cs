@@ -17,4 +17,6 @@ public interface IHabitRepository
 
     Task<bool> HasCompletionLogsInRangeAsync(
         DateTime startUtcInclusive, DateTime endUtcExclusive, CancellationToken ct = default);
+
+    Task<bool> HasFlashHabitsInWeekAsync(Guid weekId, CancellationToken ct = default);
 }

@@ -188,4 +188,27 @@ public sealed class GamificationCalculationEngineTests
         reward.XpEarned.Should().Be(9);
         reward.SpEarned.Should().Be(3);
     }
+
+    // ── ApplyDoubleXp ──────────────────────────────────────────────────────────
+
+    [Fact]
+    public void ApplyDoubleXp_Active_DoublesXpOnly()
+    {
+        var reward = new EntryReward(20, 4);
+
+        var result = GamificationCalculationEngine.ApplyDoubleXp(reward, isDoubleXpActive: true);
+
+        result.XpEarned.Should().Be(40);
+        result.SpEarned.Should().Be(4);
+    }
+
+    [Fact]
+    public void ApplyDoubleXp_Inactive_ReturnsUnchanged()
+    {
+        var reward = new EntryReward(20, 4);
+
+        var result = GamificationCalculationEngine.ApplyDoubleXp(reward, isDoubleXpActive: false);
+
+        result.Should().Be(reward);
+    }
 }

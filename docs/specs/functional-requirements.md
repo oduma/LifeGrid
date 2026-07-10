@@ -293,7 +293,7 @@ The user triggers an explicit "Overwhelmed" action for a specific goal.
 ### 4.4 Habit Level Actions
 #### 4.4.1 Flash Quests (Immediate Contextual Quests)
 * **Trigger:** By Thursday/Friday, if a user lags significantly behind on a goal, the app deploys a high-impact Flash Quest targeting the lowest completion percentage habit.
-* **Execution:** Features a dynamically calculated `Deadline DateTime` representing an immediate expiry window of **4 hours** from acceptance. Absolute hard cutoff at 20:00:00 on Sunday.
+* **Execution:** Features a dynamically calculated `Deadline DateTime` representing an immediate expiry window of **24 hours** from acceptance. Absolute hard cutoff at 20:00:00 on Sunday.
 * **Reward:** Completing the quest shifts the app into **Double XP Mode** for the remainder of the current week.
 
 ---

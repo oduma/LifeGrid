@@ -20,6 +20,9 @@ public static class GamificationCalculationEngine
         };
     }
 
+    public static EntryReward ApplyDoubleXp(EntryReward reward, bool isDoubleXpActive)
+        => isDoubleXpActive ? reward with { XpEarned = reward.XpEarned * 2 } : reward;
+
     // GP for a single habit: cumulative completion capped at 100 (stored as 0–100 float)
     public static double CalculateHabitGp(double cumulativeTotalActual, double targetValue)
         => targetValue <= 0 ? 0.0 : Math.Min(cumulativeTotalActual / targetValue * 100.0, 100.0);

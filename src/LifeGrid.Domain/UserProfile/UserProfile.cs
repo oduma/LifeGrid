@@ -45,4 +45,6 @@ public sealed class UserProfile
 
     public bool ConsumeShield() => Economy.ConsumeShield();
 
+    public void ActivateDoubleXp(DateTime expiry) => ActiveStates.ActivateDoubleXp(expiry);
+    public bool IsDoubleXpActive(DateTime now)    => ActiveStates.IsDoubleXpActive(now);
 }

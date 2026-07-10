@@ -248,6 +248,135 @@ public sealed class LogHabitProgressCommandTests
         weekGoal.GoalWeeklyGp.Should().BeApproximately(100.0, precision: 0.1);
     }
 
+    // ── Double XP (Flash quests) ──────────────────────────────────────────────
+
+    [Fact]
+    public async Task FlashBeforeDeadline_ActivatesDoubleXp()
+    {
+        var profile = UserProfileEntity.Create();
+        _profileRepo.GetSingleAsync(Arg.Any<CancellationToken>()).Returns(profile);
+
+        var habitId    = Guid.NewGuid();
+        var weekGoalId = Guid.NewGuid();
+        var habit      = HabitEntity.Create(
+            weekGoalId, LifeGrid.Domain.Habit.HabitType.Flash,
+            "Quick Sprint", "Sprint for 20 minutes", 20.0, "minutes",
+            FixedNow.AddHours(2)); // deadline is in the future
+
+        var weekGoal = WeekGoalEntity.Create(SeedWeek.WeekId, Guid.NewGuid(), 1);
+
+        _habitRepo.GetByIdAsync(habitId, Arg.Any<CancellationToken>()).Returns(habit);
+        _weekRepo.GetWeekGoalByIdAsync(weekGoalId, Arg.Any<CancellationToken>()).Returns(weekGoal);
+        _habitRepo.GetCompletionSummariesForWeekGoalAsync(weekGoalId, Arg.Any<CancellationToken>())
+            .Returns(new List<HabitCompletionSummaryDto>
+            {
+                new(habitId, 20.0, 0.0, LifeGrid.Domain.Habit.HabitType.Flash)
+            });
+
+        var result = await _handler.Handle(
+            new LogHabitProgressCommand(habitId, 20.0, "minutes", "Done!", null), default);
+
+        result.IsSuccess.Should().BeTrue();
+        profile.IsDoubleXpActive(FixedNow).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task FlashCompletion_ItselfIsDoubled()
+    {
+        var profile = UserProfileEntity.Create();
+        _profileRepo.GetSingleAsync(Arg.Any<CancellationToken>()).Returns(profile);
+
+        var habitId    = Guid.NewGuid();
+        var weekGoalId = Guid.NewGuid();
+        var habit      = HabitEntity.Create(
+            weekGoalId, LifeGrid.Domain.Habit.HabitType.Flash,
+            "Quick Sprint", "Sprint for 20 minutes", 20.0, "minutes",
+            FixedNow.AddHours(2));
+
+        var weekGoal = WeekGoalEntity.Create(SeedWeek.WeekId, Guid.NewGuid(), 1);
+
+        _habitRepo.GetByIdAsync(habitId, Arg.Any<CancellationToken>()).Returns(habit);
+        _weekRepo.GetWeekGoalByIdAsync(weekGoalId, Arg.Any<CancellationToken>()).Returns(weekGoal);
+        _habitRepo.GetCompletionSummariesForWeekGoalAsync(weekGoalId, Arg.Any<CancellationToken>())
+            .Returns(new List<HabitCompletionSummaryDto>
+            {
+                new(habitId, 20.0, 0.0, LifeGrid.Domain.Habit.HabitType.Flash)
+            });
+
+        // Full completion + proof → base reward would be 20 XP; doubled → 40 XP.
+        var result = await _handler.Handle(
+            new LogHabitProgressCommand(habitId, 20.0, "minutes", "Done!", null), default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.WasDoubled.Should().BeTrue();
+        result.Value!.XpEarned.Should().Be(40);
+    }
+
+    [Fact]
+    public async Task FlashAfterDeadline_DoesNotActivateDoubleXp()
+    {
+        var profile = UserProfileEntity.Create();
+        _profileRepo.GetSingleAsync(Arg.Any<CancellationToken>()).Returns(profile);
+
+        var habitId    = Guid.NewGuid();
+        var weekGoalId = Guid.NewGuid();
+        var habit      = HabitEntity.Create(
+            weekGoalId, LifeGrid.Domain.Habit.HabitType.Flash,
+            "Quick Sprint", "Sprint for 20 minutes", 20.0, "minutes",
+            FixedNow.AddHours(-1)); // deadline already passed
+
+        var weekGoal = WeekGoalEntity.Create(SeedWeek.WeekId, Guid.NewGuid(), 1);
+
+        _habitRepo.GetByIdAsync(habitId, Arg.Any<CancellationToken>()).Returns(habit);
+        _weekRepo.GetWeekGoalByIdAsync(weekGoalId, Arg.Any<CancellationToken>()).Returns(weekGoal);
+        _habitRepo.GetCompletionSummariesForWeekGoalAsync(weekGoalId, Arg.Any<CancellationToken>())
+            .Returns(new List<HabitCompletionSummaryDto>
+            {
+                new(habitId, 20.0, 0.0, LifeGrid.Domain.Habit.HabitType.Flash)
+            });
+
+        var result = await _handler.Handle(
+            new LogHabitProgressCommand(habitId, 20.0, "minutes", "Done!", null), default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.WasDoubled.Should().BeFalse();
+        profile.IsDoubleXpActive(FixedNow).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task DoubleXpActive_StandardHabit20BaseXp_Awards40Xp()
+    {
+        var profile = UserProfileEntity.Create();
+        // Arrange: activate Double XP first (e.g. from a prior Flash completion this week).
+        profile.ActivateDoubleXp(SeedWeek.StartDate.AddDays(7));
+        _profileRepo.GetSingleAsync(Arg.Any<CancellationToken>()).Returns(profile);
+
+        var habitId    = Guid.NewGuid();
+        var weekGoalId = Guid.NewGuid();
+        var habit      = HabitEntity.Create(
+            weekGoalId, LifeGrid.Domain.Habit.HabitType.Planned,
+            "Run 5k", "Run five kilometres", 5.0, "km",
+            new DateTime(2026, 6, 27, 0, 0, 0, DateTimeKind.Utc));
+
+        var weekGoal = WeekGoalEntity.Create(SeedWeek.WeekId, Guid.NewGuid(), 1);
+
+        _habitRepo.GetByIdAsync(habitId, Arg.Any<CancellationToken>()).Returns(habit);
+        _weekRepo.GetWeekGoalByIdAsync(weekGoalId, Arg.Any<CancellationToken>()).Returns(weekGoal);
+        _habitRepo.GetCompletionSummariesForWeekGoalAsync(weekGoalId, Arg.Any<CancellationToken>())
+            .Returns(new List<HabitCompletionSummaryDto>
+            {
+                new(habitId, 5.0, 0.0, LifeGrid.Domain.Habit.HabitType.Planned)
+            });
+
+        // 100% completion + proof → base reward = 20 XP; doubled → 40 XP.
+        var result = await _handler.Handle(
+            new LogHabitProgressCommand(habitId, 5.0, "km", "Felt great!", null), default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.XpEarned.Should().Be(40);
+        result.Value!.WasDoubled.Should().BeTrue();
+    }
+
     // ── atomic consistency ────────────────────────────────────────────────────
 
     [Fact]

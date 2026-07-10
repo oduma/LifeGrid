@@ -1,5 +1,6 @@
 using LifeGrid.Application.Gamification;
 using LifeGrid.Application.Habit;
+using LifeGrid.Domain.Habit;
 using Microsoft.EntityFrameworkCore;
 using CompletedValueLog = LifeGrid.Domain.Habit.CompletedValueLog;
 using HabitEntity = LifeGrid.Domain.Habit.Habit;
@@ -64,4 +65,9 @@ internal sealed class HabitRepository(LifeGridDbContext db) : IHabitRepository
         => db.CompletedValueLogs
             .AnyAsync(log => log.Timestamp >= startUtcInclusive
                           && log.Timestamp <  endUtcExclusive, ct);
+
+    public Task<bool> HasFlashHabitsInWeekAsync(Guid weekId, CancellationToken ct = default)
+        => db.Habits
+            .Join(db.WeekGoals, h => h.WeekGoalId, wg => wg.WeekGoalId, (h, wg) => new { h, wg })
+            .AnyAsync(x => x.wg.WeekId == weekId && x.h.HabitType == HabitType.Flash, ct);
 }

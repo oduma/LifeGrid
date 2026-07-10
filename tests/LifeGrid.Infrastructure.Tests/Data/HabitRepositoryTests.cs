@@ -182,4 +182,42 @@ public sealed class HabitRepositoryTests : IDisposable
         var persisted = await _db.CompletedValueLogs.FirstAsync();
         persisted.Timestamp.Should().Be(expectedTimestamp);
     }
+
+    // ── HasFlashHabitsInWeekAsync ─────────────────────────────────────────────
+
+    [Fact]
+    public async Task HasFlashHabitsInWeek_Exists_ReturnsTrue()
+    {
+        var (goalId, weekGoalId) = await SeedWeekGoalAsync();
+        var week = await _db.Weeks.FirstAsync(w => w.WeekGoals.Any(wg => wg.WeekGoalId == weekGoalId));
+
+        var flashHabit = HabitEntity.Create(
+            weekGoalId, HabitType.Flash, "Quick Sprint", "Sprint for 20 minutes",
+            20.0, "minutes", new DateTime(2026, 6, 23));
+        var repository = new HabitRepository(_db);
+        await repository.AddRangeAsync(new[] { flashHabit });
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        var result = await repository.HasFlashHabitsInWeekAsync(week.WeekId);
+
+        result.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task HasFlashHabitsInWeek_None_ReturnsFalse()
+    {
+        var (_, weekGoalId) = await SeedWeekGoalAsync();
+        var week = await _db.Weeks.FirstAsync(w => w.WeekGoals.Any(wg => wg.WeekGoalId == weekGoalId));
+
+        var habits = BuildHabits(weekGoalId, count: 2); // all Planned
+        var repository = new HabitRepository(_db);
+        await repository.AddRangeAsync(habits);
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        var result = await repository.HasFlashHabitsInWeekAsync(week.WeekId);
+
+        result.Should().BeFalse();
+    }
 }

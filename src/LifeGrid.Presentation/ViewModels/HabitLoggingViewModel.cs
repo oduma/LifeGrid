@@ -1,11 +1,12 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using LifeGrid.Application.Common;
 using LifeGrid.Application.HabitLogging;
 using MediatR;
 
 namespace LifeGrid.Presentation.ViewModels;
 
-public partial class HabitLoggingViewModel(IMediator mediator)
+public partial class HabitLoggingViewModel(IMediator mediator, IToastNotificationService toastService)
     : ObservableObject, IQueryAttributable
 {
     [ObservableProperty] private Guid    _habitId;
@@ -68,6 +69,9 @@ public partial class HabitLoggingViewModel(IMediator mediator)
             ErrorMessage = result.Error ?? "Failed to log progress.";
             return;
         }
+
+        if (result.Value!.WasDoubled)
+            await toastService.ShowInfoAsync("Double XP!", $"+{result.Value.XpEarned} XP (x2)");
 
         await Shell.Current.GoToAsync("..");
     }

@@ -1,5 +1,6 @@
 using LifeGrid.Application.Badge;
 using LifeGrid.Application.Common;
+using LifeGrid.Application.FlashQuest;
 using LifeGrid.Application.Gamification;
 using LifeGrid.Application.Onboarding.Queries;
 using LifeGrid.Application.Week;
@@ -72,6 +73,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<IToastNotificationService, MauiToastNotificationService>();
         builder.Services.AddSingleton<IPushNotificationService, LocalPushNotificationService>();
         builder.Services.AddScoped<IWeekLifecycleSyncService, WeekLifecycleSyncService>();
+        builder.Services.AddScoped<IFlashQuestTriggerService, FlashQuestTriggerService>();
         builder.Services.AddScoped<IConsistencyBadgeEvaluator, ConsistencyBadgeEvaluator>();
 
 #if DEBUG

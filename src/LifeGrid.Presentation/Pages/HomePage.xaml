@@ -123,9 +123,42 @@
                                                     <Setter Property="Stroke"          Value="{StaticResource Primary}" />
                                                     <Setter Property="StrokeThickness" Value="2" />
                                                 </DataTrigger>
+                                                <DataTrigger TargetType="Border" Binding="{Binding IsFlash}" Value="True">
+                                                    <Setter Property="Stroke"          Value="{StaticResource Secondary}" />
+                                                    <Setter Property="StrokeThickness" Value="2" />
+                                                </DataTrigger>
                                             </Border.Triggers>
 
                                             <VerticalStackLayout Spacing="6">
+
+                                                <!-- Flash Quest header (icon + badge label + countdown) -->
+                                                <Grid
+                                                    ColumnDefinitions="Auto,*,Auto"
+                                                    ColumnSpacing="6"
+                                                    IsVisible="{Binding IsFlash}">
+                                                    <Label
+                                                        Grid.Column="0"
+                                                        Text="&#xEF55;"
+                                                        FontFamily="MaterialSymbolsRounded"
+                                                        FontSize="16"
+                                                        TextColor="{StaticResource OnSecondary}"
+                                                        VerticalOptions="Center" />
+                                                    <Label
+                                                        Grid.Column="1"
+                                                        Text="FLASH QUEST"
+                                                        FontFamily="{StaticResource FontShareTechMono}"
+                                                        FontSize="9"
+                                                        TextColor="{StaticResource OnSecondary}"
+                                                        VerticalOptions="Center" />
+                                                    <Label
+                                                        Grid.Column="2"
+                                                        Text="{Binding CountdownText}"
+                                                        FontFamily="{StaticResource FontShareTechMono}"
+                                                        FontSize="9"
+                                                        FontAttributes="Bold"
+                                                        TextColor="{StaticResource OnSecondary}"
+                                                        VerticalOptions="Center" />
+                                                </Grid>
 
                                                 <!-- Moment Burst header (icon + badge label) -->
                                                 <Grid

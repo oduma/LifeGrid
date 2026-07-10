@@ -112,6 +112,36 @@ public sealed class GetHudTelemetryQueryTests
     }
 
     [Fact]
+    public async Task IsDoubleXpActive_True_WhenProfileActive()
+    {
+        var profile = UserProfileEntity.Create();
+        profile.ActivateDoubleXp(FixedMonday.AddDays(7));
+        _profileRepo.GetSingleAsync(Arg.Any<CancellationToken>()).Returns(profile);
+        _weekRepo.GetByStartDateAsync(Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+                 .Returns((WeekEntity?)null);
+
+        var result = await _handler.Handle(new GetHudTelemetryQuery(), default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.IsDoubleXpActive.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task IsDoubleXpActive_False_WhenExpired()
+    {
+        var profile = UserProfileEntity.Create();
+        profile.ActivateDoubleXp(FixedMonday.AddDays(-1)); // already expired
+        _profileRepo.GetSingleAsync(Arg.Any<CancellationToken>()).Returns(profile);
+        _weekRepo.GetByStartDateAsync(Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+                 .Returns((WeekEntity?)null);
+
+        var result = await _handler.Handle(new GetHudTelemetryQuery(), default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.IsDoubleXpActive.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task Handler_RequestsCurrentMondayFromDateProvider()
     {
         // Wednesday — handler should strip back to Monday

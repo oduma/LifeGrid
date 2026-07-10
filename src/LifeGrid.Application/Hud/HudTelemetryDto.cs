@@ -9,4 +9,5 @@ public record HudTelemetryDto(
     int    CurrentSp,
     int    WeeklySpEarned,
     int    ActiveShields,
-    int    ShieldCap);
+    int    ShieldCap,
+    bool   IsDoubleXpActive);

@@ -8,4 +8,6 @@ public record LogHabitProgressCommand(
     double  ActualValue,
     string  MeasurementUnit,
     string? ProofText,
-    string? ProofImageUrl) : IRequest<Result>;
+    string? ProofImageUrl) : IRequest<Result<LogHabitProgressResult>>;
+
+public record LogHabitProgressResult(int XpEarned, bool WasDoubled);

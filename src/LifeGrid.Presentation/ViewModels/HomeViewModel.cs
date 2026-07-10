@@ -15,6 +15,7 @@ public partial class HomeViewModel : ObservableObject
     private readonly IMediator                  _mediator;
     private readonly IToastNotificationService  _toastService;
     private Guid _currentWeekId;
+    private IDispatcherTimer? _countdownTimer;
 
     public HomeViewModel(IMediator mediator, IToastNotificationService toastService)
     {
@@ -56,6 +57,25 @@ public partial class HomeViewModel : ObservableObject
         GoalGroups.Clear();
         foreach (var g in dto.GoalGroups)
             GoalGroups.Add(new WeeklyGoalGroupItem(g, isFuture: false, isCurrentWeek: true));
+
+        StartCountdownTimer();
+    }
+
+    private void StartCountdownTimer()
+    {
+        _countdownTimer ??= Microsoft.Maui.Controls.Application.Current!.Dispatcher.CreateTimer();
+        if (_countdownTimer.IsRunning) return;
+
+        _countdownTimer.Interval = TimeSpan.FromSeconds(60);
+        _countdownTimer.Tick += (_, _) => RefreshFlashCountdowns();
+        _countdownTimer.Start();
+    }
+
+    private void RefreshFlashCountdowns()
+    {
+        var now = DateTime.UtcNow;
+        foreach (var habit in GoalGroups.SelectMany(g => g.Habits).Where(h => h.IsFlash))
+            habit.RefreshCountdown(now);
     }
 
     [RelayCommand]

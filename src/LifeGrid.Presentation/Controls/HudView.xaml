@@ -99,6 +99,23 @@
                     </Label.FormattedText>
                 </Label>
 
+                <Border
+                    IsVisible="{Binding IsDoubleXpActive}"
+                    BackgroundColor="{StaticResource Secondary}"
+                    StrokeThickness="0"
+                    Padding="6,2"
+                    VerticalOptions="Center">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="2" />
+                    </Border.StrokeShape>
+                    <Label
+                        Text="2x XP ACTIVE"
+                        TextColor="{StaticResource OnSecondary}"
+                        FontFamily="ShareTechMono"
+                        FontAttributes="Bold"
+                        FontSize="11" />
+                </Border>
+
             </HorizontalStackLayout>
         </ScrollView>
 

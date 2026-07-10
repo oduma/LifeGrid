@@ -18,6 +18,7 @@ public partial class WeeklyHabitsViewModel : ObservableObject, IQueryAttributabl
 
     private Guid                 _weekId;
     private IReadOnlyList<Guid>? _filterGoalIds;
+    private IDispatcherTimer?    _countdownTimer;
 
     public WeeklyHabitsViewModel(IMediator mediator, IToastNotificationService toastService)
     {
@@ -80,6 +81,25 @@ public partial class WeeklyHabitsViewModel : ObservableObject, IQueryAttributabl
             GoalGroups.Add(new WeeklyGoalGroupItem(g, isFuture, isCurrentWeek,
                                                    isLoggingEnabled: isLogging,
                                                    hasShields: dto.ShieldsAvailable > 0));
+
+        StartCountdownTimer();
+    }
+
+    private void StartCountdownTimer()
+    {
+        _countdownTimer ??= Microsoft.Maui.Controls.Application.Current!.Dispatcher.CreateTimer();
+        if (_countdownTimer.IsRunning) return;
+
+        _countdownTimer.Interval = TimeSpan.FromSeconds(60);
+        _countdownTimer.Tick += (_, _) => RefreshFlashCountdowns();
+        _countdownTimer.Start();
+    }
+
+    private void RefreshFlashCountdowns()
+    {
+        var now = DateTime.UtcNow;
+        foreach (var habit in GoalGroups.SelectMany(g => g.Habits).Where(h => h.IsFlash))
+            habit.RefreshCountdown(now);
     }
 
     [RelayCommand]

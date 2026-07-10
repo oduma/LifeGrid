@@ -21,29 +21,29 @@ public sealed class LogHabitProgressCommandHandler(
     IUnitOfWork              unitOfWork,
     IEconomyStateBroadcaster broadcaster,
     INotificationRepository  notificationRepository)
-    : IRequestHandler<LogHabitProgressCommand, Result>
+    : IRequestHandler<LogHabitProgressCommand, Result<LogHabitProgressResult>>
 {
-    public async Task<Result> Handle(
+    public async Task<Result<LogHabitProgressResult>> Handle(
         LogHabitProgressCommand request, CancellationToken cancellationToken)
     {
         if (request.ActualValue <= 0)
-            return Result.Failure("Actual value must be greater than zero.");
+            return Result<LogHabitProgressResult>.Failure("Actual value must be greater than zero.");
 
         var habit = await habitRepository.GetByIdAsync(request.HabitId, cancellationToken);
         if (habit is null)
-            return Result.Failure("Habit not found.");
+            return Result<LogHabitProgressResult>.Failure("Habit not found.");
 
         var weekGoal = await weekRepository.GetWeekGoalByIdAsync(habit.WeekGoalId, cancellationToken);
         if (weekGoal is null)
-            return Result.Failure("WeekGoal not found.");
+            return Result<LogHabitProgressResult>.Failure("WeekGoal not found.");
 
         var week = await weekRepository.GetByIdAsync(weekGoal.WeekId, cancellationToken);
         if (week is null)
-            return Result.Failure("Week not found.");
+            return Result<LogHabitProgressResult>.Failure("Week not found.");
 
         var profile = await userProfileRepository.GetSingleAsync(cancellationToken);
         if (profile is null)
-            return Result.Failure("UserProfile not found.");
+            return Result<LogHabitProgressResult>.Failure("UserProfile not found.");
 
         var log = CompletedValueLog.Create(
             request.HabitId,
@@ -74,6 +74,16 @@ public sealed class LogHabitProgressCommandHandler(
         bool hasProof = request.ProofText is not null || request.ProofImageUrl is not null;
         var  reward   = GamificationCalculationEngine.CalculateEntryReward(
             habit.HabitType, request.ActualValue, effectiveTarget, hasProof);
+
+        if (habit.HabitType == HabitType.Flash
+            && habit.IsBeforeDeadline(dateTimeProvider.UtcNow)
+            && !profile.IsDoubleXpActive(dateTimeProvider.UtcNow))
+        {
+            profile.ActivateDoubleXp(week.StartDate.AddDays(7));
+        }
+
+        bool doubleXpActive = profile.IsDoubleXpActive(dateTimeProvider.UtcNow);
+        reward = GamificationCalculationEngine.ApplyDoubleXp(reward, doubleXpActive);
 
         double newWeekGoalGp = GamificationCalculationEngine.CalculateWeekGoalGp(
             adjustedSummaries
@@ -113,6 +123,7 @@ public sealed class LogHabitProgressCommandHandler(
 
         broadcaster.BroadcastEconomy(profile.Economy.CurrentSp, profile.Economy.ShieldsAvailable);
 
-        return Result.Success();
+        return Result<LogHabitProgressResult>.Success(
+            new LogHabitProgressResult(reward.XpEarned, doubleXpActive));
     }
 }

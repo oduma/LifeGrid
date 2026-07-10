@@ -37,4 +37,6 @@ public sealed class Habit
         => _completedValuesLog.AsReadOnly();
 
     internal void AddCompletionLog(CompletedValueLog log) => _completedValuesLog.Add(log);
+
+    public bool IsBeforeDeadline(DateTime at) => at <= DeadlineDateTime;
 }

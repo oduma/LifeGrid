@@ -5181,3 +5181,240 @@ else
 ## P31.12 — EF Migration
 
 No migration required. `PenaltyState` is already persisted via `.HasConversion<string>()` — no schema changes. `Goal.Status` (`GoalStatus.Overwhelmed`) is also already mapped as string. The `WeekGoal.SetPenaltyState` and `WeekGoal.ApplyXpPenalty` methods mutate already-mapped columns.
+
+# Phase 32 — Flash Quests & Temporal Multipliers
+
+**Source:** `docs/requirements/Phase-32-requirements.md`
+**Clarifications recorded:** 2026-07-10
+**Status:** DONE — 414 tests passing (130 Domain / 204 Application / 80 Infrastructure)
+
+## P32.1 — Clarifications Recorded
+
+| # | Question | Answer |
+|---|---|---|
+| 1 | `IsDoubleXpActive` storage | **Reuse existing `UserActiveStates.DoubleXpMode` / `DoubleXpExpiry`** (already scaffolded on `UserProfile.ActiveStates` since Phase 23, matches `data-structure.json`'s `User_Profile.Active_States`). No new `Week`-level field. `DoubleXpExpiry` is set to the start of the following week (`week.StartDate.AddDays(7)`); `IsDoubleXpActive(now)` is a pure time check (`DoubleXpMode && now < DoubleXpExpiry`), so the multiplier self-expires without any explicit deactivation step at week close. |
+| 2 | Gemini call scope | **One batched call per week.** `GenerateFlashQuestCommand` gathers every lagging `WeekGoal` (`GoalWeeklyGp < 50.0`) for the target week and submits all their habits in a single Gemini request. |
+| 3 | Quest → source attribution | **Extend `prompt8.txt`'s contract with a `habit_id` field.** Each input habit is tagged with its `HabitId`; the AI is required to echo `source_habit_id` back on every returned quest. The handler resolves `source_habit_id` → `WeekGoalId` from the habits it loaded; any quest with an unrecognized id is discarded defensively. |
+| 4 | Countdown timer ("Expires in Xh Ym") | **Live-ticking**, refreshed every 60s via `IDispatcherTimer` while the Home/WeeklyHabits page is loaded. |
+| 5 | Duplicate injection guard | Before calling Gemini, `GenerateFlashQuestCommand` checks `IHabitRepository.HasFlashHabitsInWeekAsync(weekId)`. If the week already contains any `Flash` habit, the pipeline no-ops (protects against `PeriodicWorkRequest` re-firing or device restarts re-running the Thursday worker). |
+| 6 | Worker scheduling | New dedicated `ThursdayFlashQuestWorker`, following the exact Monday/Wednesday `PeriodicWorkRequest` convention from Phase 30, targeting **Thursday 12:00 local** (best-effort, like the existing 09:00 workers — WorkManager does not guarantee exact-minute firing). It evaluates the **current** active week (`today`'s Monday), unlike `WeekLifecycleSyncService` which evaluates the **previous** week's Monday — so it is a separate service (`IFlashQuestTriggerService`), not a branch on `WeekLifecycleSyncService.EvaluateAsync`. |
+
+## P32.2 — Domain: Flash Quest & Double XP Primitives
+
+**`Habit` entity** (`src/LifeGrid.Domain/Habit/Habit.cs`) — add:
+```csharp
+public bool IsBeforeDeadline(DateTime at) => at <= DeadlineDateTime;
+```
+`HabitType.Flash` already exists (Phase 4 scaffold) — no enum change needed.
+
+**`UserActiveStates`** (`src/LifeGrid.Domain/UserProfile/UserActiveStates.cs`) — add:
+```csharp
+internal void ActivateDoubleXp(DateTime expiry)
+{
+    DoubleXpMode   = true;
+    DoubleXpExpiry = expiry;
+}
+
+public bool IsDoubleXpActive(DateTime now) => DoubleXpMode && now < DoubleXpExpiry;
+```
+
+**`UserProfile`** (`src/LifeGrid.Domain/UserProfile/UserProfile.cs`) — add pass-throughs:
+```csharp
+public void ActivateDoubleXp(DateTime expiry) => ActiveStates.ActivateDoubleXp(expiry);
+public bool IsDoubleXpActive(DateTime now)    => ActiveStates.IsDoubleXpActive(now);
+```
+
+**`GamificationCalculationEngine`** (`src/LifeGrid.Domain/Gamification/GamificationCalculationEngine.cs`) — add:
+```csharp
+public static EntryReward ApplyDoubleXp(EntryReward reward, bool isDoubleXpActive)
+    => isDoubleXpActive ? reward with { XpEarned = reward.XpEarned * 2 } : reward;
+```
+Only `XpEarned` is doubled — `SpEarned` is untouched (per requirement §3.2, the multiplier applies to XP only). `Week.cs` and `WeekGoal.cs` are unchanged; Flash habits already count toward `GoalWeeklyGp` under the existing Phase 23 rule ("only `MomentBurst` is excluded from GP").
+
+## P32.3 — Application: Flash Quest Generation Pipeline
+
+**New folder:** `src/LifeGrid.Application/FlashQuest/`
+
+**`GenerateFlashQuestCommand`**
+```csharp
+public record GenerateFlashQuestCommand(Guid WeekId) : IRequest<Result<GenerateFlashQuestResult>>;
+public record GenerateFlashQuestResult(int QuestsInjected);
+```
+
+Handler (`GenerateFlashQuestCommandHandler`) dependencies: `IWeekRepository`, `IHabitRepository`, `IGoalRepository`, `IGeminiFlashQuestService`, `IDateTimeProvider`, `IUnitOfWork`.
+
+Handler logic:
+1. Load `week` by `WeekId` (includes `WeekGoals`) — `Failure("week_not_found")` if null.
+2. `if (await habitRepository.HasFlashHabitsInWeekAsync(week.WeekId, ct)) return Success(new(0))` — idempotency guard.
+3. `laggingGoals = week.WeekGoals.Where(wg => wg.GoalWeeklyGp < 50.0).ToList()`. If empty → `Success(new(0))` (mirrors "if all goals ≥50%, execution halts").
+4. For each lagging `WeekGoal`, load its habits (`habitRepository.GetByWeekGoalIdAsync`) and its `Goal` (`goalRepository.GetByIdAsync`, for description/ambient-tag context). Build a `habitId → WeekGoalId` lookup map for later attribution.
+5. Serialize the combined "Weekly Goal Habits JSON" payload: one entry per habit across all lagging goals, each carrying `habit_id`, `goal_description`, `habit_name`, `habit_description`, `habit_type`, cumulative `complete_measurement.value` (from `GetCompletionSummariesForWeekGoalAsync`), and `target_measurement` (`value`, `unit`).
+6. `geminiFlashQuestService.GenerateAsync(payloadJson, dateTimeProvider.UtcNow, ct)`.
+7. On `Failure` or `NotEligible` (AI replied `"N/A"`) → `Success(new(0))` — graceful halt, not an error.
+8. For each returned quest: resolve `source_habit_id` via the lookup map; skip (log, don't throw) if unrecognized.
+9. For each resolved quest: `Habit.Create(weekGoalId, HabitType.Flash, questName, description, measureValue, measureUnit, deadlineDateTime: dateTimeProvider.UtcNow.AddHours(24))`.
+10. `habitRepository.AddRangeAsync(newHabits, ct)` → `unitOfWork.CommitAsync(ct)` → `Success(new(newHabits.Count))`.
+
+**`IGeminiFlashQuestService`**
+```csharp
+public interface IGeminiFlashQuestService
+{
+    Task<Result<FlashQuestGenerationResult>> GenerateAsync(
+        string weeklyHabitsJson, DateTime currentDate, CancellationToken ct = default);
+}
+
+public abstract record FlashQuestGenerationResult
+{
+    public sealed record NotEligible : FlashQuestGenerationResult;
+    public sealed record Accepted(IReadOnlyList<FlashQuestItem> Quests) : FlashQuestGenerationResult;
+}
+
+public record FlashQuestItem(
+    Guid SourceHabitId, string QuestName, string Description, double MeasureValue, string MeasureUnit);
+```
+
+**`IFlashQuestTriggerService` / `FlashQuestTriggerService`** — mirrors `IWeekLifecycleSyncService` but operates on the **current** week:
+```csharp
+public interface IFlashQuestTriggerService
+{
+    Task EvaluateAsync(CancellationToken ct = default);
+}
+```
+```csharp
+public sealed class FlashQuestTriggerService(
+    IWeekRepository weekRepository, ISender sender, IDateTimeProvider dateTimeProvider)
+    : IFlashQuestTriggerService
+{
+    public async Task EvaluateAsync(CancellationToken ct = default)
+    {
+        var today = dateTimeProvider.UtcNow.Date;
+        if (today.DayOfWeek != DayOfWeek.Thursday) return;
+
+        int daysFromMon   = ((int)today.DayOfWeek - (int)DayOfWeek.Monday + 7) % 7;
+        var currentMonday = today.AddDays(-daysFromMon);
+        var week = await weekRepository.GetByStartDateAsync(currentMonday, ct);
+        if (week is null || week.Status != WeekStatus.Active) return;
+
+        await sender.Send(new GenerateFlashQuestCommand(week.WeekId), ct);
+    }
+}
+```
+
+**`IHabitRepository`** — add:
+```csharp
+Task<bool> HasFlashHabitsInWeekAsync(Guid weekId, CancellationToken ct = default);
+```
+
+## P32.4 — Application: Double XP Wiring into Habit Logging
+
+**`LogHabitProgressCommand`** — return type changes `Result` → `Result<LogHabitProgressResult>`:
+```csharp
+public record LogHabitProgressResult(int XpEarned, bool WasDoubled);
+```
+
+**`LogHabitProgressCommandHandler`** — after the existing `var reward = GamificationCalculationEngine.CalculateEntryReward(...)` line, insert:
+```csharp
+if (habit.HabitType == HabitType.Flash
+    && habit.IsBeforeDeadline(dateTimeProvider.UtcNow)
+    && !profile.IsDoubleXpActive(dateTimeProvider.UtcNow))
+{
+    profile.ActivateDoubleXp(week.StartDate.AddDays(7));
+}
+
+bool doubleXpActive = profile.IsDoubleXpActive(dateTimeProvider.UtcNow);
+reward = GamificationCalculationEngine.ApplyDoubleXp(reward, doubleXpActive);
+```
+Activation happens *before* the doubling check so a Flash habit's own completion is doubled in the same transaction (per §3.2, "including the Flash task itself"). The single `reward.XpEarned` value already flows into both `weekGoal.RecordMetricsUpdate` and `profile.ApplyXpAndLevelProgression`, so weekly and lifetime XP double consistently with no extra branching. `SpEarned` and GP math are unaffected. Return `Result<LogHabitProgressResult>.Success(new(reward.XpEarned, doubleXpActive))` at the end.
+
+## P32.5 — Application: HUD & Dashboard Read-Model Extensions
+
+**`HudTelemetryDto`** — add `bool IsDoubleXpActive`. **`GetHudTelemetryQueryHandler`** — populate from `profile.IsDoubleXpActive(dateTimeProvider.UtcNow)` (all early-return branches that construct the DTO without a loaded week/profile pass `false`).
+
+No changes needed to `WeeklyHabitItemDto` / `WeeklyGoalGroupDto` — `HabitType` (already `"Flash"`) and `DeadlineDateTime` are sufficient for the Presentation layer to compute Flash styling and the countdown client-side.
+
+## P32.6 — Infrastructure: Repository & Gemini Service
+
+**`HabitRepository.HasFlashHabitsInWeekAsync`**
+```csharp
+public async Task<bool> HasFlashHabitsInWeekAsync(Guid weekId, CancellationToken ct = default)
+    => await db.Habits
+        .Join(db.WeekGoals, h => h.WeekGoalId, wg => wg.WeekGoalId, (h, wg) => new { h, wg })
+        .AnyAsync(x => x.wg.WeekId == weekId && x.h.HabitType == HabitType.Flash, ct);
+```
+
+**`GeminiFlashQuestService`** (`src/LifeGrid.Infrastructure/AI/GeminiFlashQuestService.cs`) — follows the exact `GeminiMomentBurstService` pattern (embedded prompt template, `${CURRENT_DATE}` / `${WEEKLY_HABITS_JSON}` placeholder substitution, `StripCodeFences`, try/catch around `IChatClient.GetResponseAsync` mapping `HttpRequestException`/generic exceptions to `Result.Failure`). Parses either the literal string `"N/A"` → `NotEligible`, or a `{"flash-quests": [...]}` JSON array → `Accepted`, reading `source_habit_id`, `falsh_quest_name` (sic, matches the existing prompt typo), `habit_description`, and `measure.{value,unit}` per item.
+
+**`prompt8.txt`** — copied into `src/LifeGrid.Infrastructure/AI/Prompts/prompt8.txt` (embedded resource, registered in `LifeGrid.Infrastructure.csproj`) with two additions to the existing `docs/specs/assets/prompts/prompt8.txt` contract:
+- Input: each entry in `${WEEKLY_HABITS_JSON}` is tagged with `"habit_id"`.
+- Output: each object in the `flash-quests` array must include `"source_habit_id"` matching the input `habit_id` it was generated from.
+
+Both the docs copy and the embedded copy are updated together so they stay in sync.
+
+## P32.7 — Presentation: Background Scheduling (Android WorkManager)
+
+**`WeekLifecycleScheduler.ComputeInitialDelay`** — add an `int targetHour = 9` parameter (default preserves existing Monday/Wednesday behavior at 09:00).
+
+**`ThursdayFlashQuestWorker`** (`src/LifeGrid.Presentation/Platforms/Android/Workers/ThursdayFlashQuestWorker.cs`) — same DI-scope-and-invoke pattern as `MondayWeekReminderWorker`/`WednesdayAutoCloseWorker`, calling `IFlashQuestTriggerService.EvaluateAsync()`.
+
+**`WeekLifecycleScheduler.Schedule()`** — register a third `PeriodicWorkRequest` (`lifegrid-thursday-flash-quest`) targeting Thursday, hour 12.
+
+**`MauiProgram.cs`** — register `IFlashQuestTriggerService` → `FlashQuestTriggerService` and `IGeminiFlashQuestService` → `GeminiFlashQuestService` (scoped, matching the other Gemini services).
+
+## P32.8 — Presentation: Flash Card Visualization & Live Countdown
+
+**`WeeklyHabitItem`** (`src/LifeGrid.Presentation/ViewModels/WeeklyHabitItem.cs`) — converted to `ObservableObject`:
+- Add `bool IsFlash => HabitTypeLabel == "Flash"`.
+- Add `[ObservableProperty] private string _countdownText;` and `public void RefreshCountdown(DateTime nowUtc)`, computing `DeadlineDateTime - nowUtc` → `"Expires in {h}h {m}m"`, or `"Expired"` once negative. Called once at construction and on every timer tick.
+
+**`HomeViewModel` / `WeeklyHabitsViewModel`** — each owns an `IDispatcherTimer` (`Application.Current!.Dispatcher.CreateTimer()`, `Interval = TimeSpan.FromSeconds(60)`) started in `LoadAsync()` (guarded so it's created once), ticking `foreach (var h in GoalGroups.SelectMany(g => g.Habits).Where(h => h.IsFlash)) h.RefreshCountdown(DateTime.UtcNow)`.
+
+**`HomePage.xaml`, `WeeklyHabitsPage.xaml`, `WeekSummaryPage.xaml`** — on the habit card template, gated by `IsVisible="{Binding IsFlash}"` / a `DataTrigger`:
+- High-contrast `Border` treatment using the `Secondary` token (`#e5cde1`) with `On-Secondary` (`#a20ba0`) text/icon, 2px corner radius (per style guide).
+- Material Symbol icon `local_fire_department`.
+- `CountdownText` label.
+
+**`HudView.xaml`** — new element in the center telemetry `HorizontalStackLayout`, `IsVisible="{Binding IsDoubleXpActive}"`: a `Border` badge (`Secondary`/`On-Secondary` tokens) reading `"2x XP ACTIVE"`.
+
+**`HabitLoggingViewModel.LogProgressAsync`** — consumes `Result<LogHabitProgressResult>`; on success with `result.Value!.WasDoubled`, calls `toastService.ShowInfoAsync("Double XP!", $"+{result.Value.XpEarned} XP (x2)")` before `GoToAsync("..")`; otherwise navigates back unchanged (existing behavior).
+
+## P32.9 — TDD Invariants
+
+| Test | Layer | Assertion |
+|---|---|---|
+| `IsBeforeDeadline_BeforeDeadline_ReturnsTrue` / `_AfterDeadline_ReturnsFalse` | Domain | `Habit.IsBeforeDeadline` boundary |
+| `ActivateDoubleXp_SetsMode_AndExpiry` | Domain | `UserActiveStates.DoubleXpMode == true`, `DoubleXpExpiry` matches |
+| `IsDoubleXpActive_BeforeExpiry_ReturnsTrue` / `_AfterExpiry_ReturnsFalse` | Domain | Time-boundary check |
+| `ApplyDoubleXp_Active_DoublesXpOnly` | Domain | 20 XP / 4 SP → 40 XP / 4 SP |
+| `ApplyDoubleXp_Inactive_ReturnsUnchanged` | Domain | reward === input |
+| `GenerateFlashQuest_AllGoalsAbove50Pct_NoOp` | Application | `QuestsInjected == 0`, no Gemini call, no habits added |
+| `GenerateFlashQuest_LaggingGoalBelow50Pct_CallsGeminiAndInjectsHabits` | Application | mirrors the temporal trigger test: one goal at 45% → pipeline runs, `HabitType.Flash` habit persisted with `DeadlineDateTime == now.AddHours(24)` |
+| `GenerateFlashQuest_AiReturnsNotEligible_NoOp` | Application | `Success(0)`, no habits added |
+| `GenerateFlashQuest_AiReturnsUnknownSourceId_SkipsItem` | Application | malformed attribution discarded, not thrown |
+| `GenerateFlashQuest_AlreadyHasFlashHabits_SkipsPipeline` | Application | idempotency guard short-circuits before any Gemini call |
+| `FlashQuestTrigger_NotThursday_NoOp` | Application | `EvaluateAsync` on a Tuesday sends nothing |
+| `FlashQuestTrigger_Thursday_SendsGenerateFlashQuestCommand` | Application | mocked clock = Thursday 12:01 PM → command sent for current week |
+| `LogHabitProgress_FlashBeforeDeadline_ActivatesDoubleXp` | Application | `Week.IsDoubleXpActive` (i.e. `profile.IsDoubleXpActive`) flips to true |
+| `LogHabitProgress_FlashCompletion_DoublesItsOwnXp` | Application | the triggering Flash completion itself is doubled |
+| `LogHabitProgress_FlashAfterDeadline_DoesNotActivateDoubleXp` | Application | late completion logs normally, no multiplier |
+| `LogHabitProgress_DoubleXpActive_StandardHabit20BaseXp_Awards40Xp` | Application | multiplier math assertion from §5 of the requirements doc |
+| `HasFlashHabitsInWeek_Exists_ReturnsTrue` / `_None_ReturnsFalse` | Infrastructure | repository guard query |
+| `GeminiFlashQuestService_ParsesAcceptedResponse_WithSourceHabitIds` | Infrastructure | JSON parse round-trip |
+| `GeminiFlashQuestService_ParsesNotEligible_OnLiteralNA` | Infrastructure | `"N/A"` → `NotEligible` |
+
+## P32.10 — EF Migration
+
+No migration required. `HabitType.Flash` already exists as an enum value under `.HasConversion<string>()`; `UserActiveStates.DoubleXpMode`/`DoubleXpExpiry` are already mapped columns (Phase 4 scaffold, previously unused). No new columns or tables.
+
+## P32.11 — Implementation Notes (Post-Approval Corrections)
+
+### 1. `Application.Current` namespace ambiguity
+`HomeViewModel.cs` and `WeeklyHabitsViewModel.cs` both have `using LifeGrid.Application.*` imports, which makes the bare identifier `Application` resolve to the `LifeGrid.Application` namespace instead of `Microsoft.Maui.Controls.Application` (CS0234). Both files' `StartCountdownTimer()` method fully-qualify the call as `Microsoft.Maui.Controls.Application.Current!.Dispatcher.CreateTimer()`.
+
+### 2. `WeekSummaryPage` gets static (non-ticking) Flash styling only
+Per plan G4, all three habit-card pages (`HomePage`, `WeeklyHabitsPage`, `WeekSummaryPage`) received the Secondary-token border treatment and Flash badge. However, only `HomeViewModel` and `WeeklyHabitsViewModel` own an `IDispatcherTimer` for live countdown ticking (G2/G3) — `WeekSummaryViewModel` does not, since it renders a read-only, already-closed week where a live "Expires in Xh Ym" countdown has no practical meaning. `WeekSummaryPage`'s Flash badge omits the `CountdownText` label entirely (icon + "FLASH QUEST" text only) rather than showing a countdown that never updates.
+
+### 3. Test isolation fix — `LogHabitProgressCommandTests`'s Double XP tests use a local `UserProfile`, not the shared `SeedProfile`
+The existing test class holds `SeedProfile` as a `private static readonly` field shared across all `[Fact]` methods (a pre-existing pattern from Phase 22/23 tolerated because those tests only assert `LifetimeXp > 0`, which is order-independent). The four new Double XP tests (`FlashBeforeDeadline_ActivatesDoubleXp`, `FlashCompletion_ItselfIsDoubled`, `FlashAfterDeadline_DoesNotActivateDoubleXp`, `DoubleXpActive_StandardHabit20BaseXp_Awards40Xp`) assert exact `IsDoubleXpActive`/`WasDoubled` state, which would be flaky under xUnit's undefined test-method execution order if they shared `SeedProfile`. Each of these four tests instead creates its own local `UserProfile.Create()` instance and stubs `_profileRepo.GetSingleAsync(...)` to return it, keeping Double XP state fully isolated per test.
+
+### 4. Test bug caught during the initial run — `GenerateFlashQuestCommandTests`
+The first draft of `LaggingGoalBelow50Pct_CallsGeminiAndInjectsFlashHabit` (and two sibling tests) declared a standalone `var habitId = Guid.NewGuid()` separate from the `Habit` entity constructed via `HabitEntity.Create(...)`, which always generates its own internal `HabitId`. This caused the handler's `habitId → WeekGoalId` attribution dictionary to never match the completion-summary/AI-response habit id, silently producing `QuestsInjected == 0` in a test meant to exercise the happy path. Fixed by reading `habit.HabitId` directly instead of a separately-generated `Guid`. No production code was affected — `GenerateFlashQuestCommandHandler`'s attribution logic was correct; only the test fixture was wrong.
