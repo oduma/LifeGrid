@@ -23,6 +23,10 @@ public static class GamificationCalculationEngine
     public static EntryReward ApplyDoubleXp(EntryReward reward, bool isDoubleXpActive)
         => isDoubleXpActive ? reward with { XpEarned = reward.XpEarned * 2 } : reward;
 
+    // Penalty % = DangerLevel * 1%; subtracting DangerLevel directly off the 0–100 GP scale is equivalent.
+    public static double ApplyVicePenalty(double currentGp, int dangerLevel)
+        => Math.Max(0.0, currentGp - dangerLevel);
+
     // GP for a single habit: cumulative completion capped at 100 (stored as 0–100 float)
     public static double CalculateHabitGp(double cumulativeTotalActual, double targetValue)
         => targetValue <= 0 ? 0.0 : Math.Min(cumulativeTotalActual / targetValue * 100.0, 100.0);

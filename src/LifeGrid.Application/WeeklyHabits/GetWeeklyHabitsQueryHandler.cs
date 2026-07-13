@@ -1,18 +1,23 @@
+using LifeGrid.Application.Common;
 using LifeGrid.Application.Goal;
 using LifeGrid.Application.Habit;
 using LifeGrid.Application.UserProfile;
+using LifeGrid.Application.ViceCheck;
 using LifeGrid.Application.Week;
 using LifeGrid.Domain.Common;
+using LifeGrid.Domain.Week;
 using MediatR;
 using HabitEntity = LifeGrid.Domain.Habit.Habit;
 
 namespace LifeGrid.Application.WeeklyHabits;
 
 public sealed class GetWeeklyHabitsQueryHandler(
-    IWeekRepository        weekRepository,
-    IGoalRepository        goalRepository,
-    IHabitRepository       habitRepository,
-    IUserProfileRepository profileRepository)
+    IWeekRepository           weekRepository,
+    IGoalRepository           goalRepository,
+    IHabitRepository          habitRepository,
+    IUserProfileRepository    profileRepository,
+    IViceCheckAuditRepository auditRepository,
+    IDateTimeProvider         dateTimeProvider)
     : IRequestHandler<GetWeeklyHabitsQuery, Result<WeeklyHabitsDashboardDto>>
 {
     public async Task<Result<WeeklyHabitsDashboardDto>> Handle(
@@ -43,6 +48,14 @@ public sealed class GetWeeklyHabitsQueryHandler(
 
         var profile         = await profileRepository.GetSingleAsync(cancellationToken);
         var shieldsAvailable = profile?.Economy.ShieldsAvailable ?? 0;
+
+        var alreadyAudited = await auditRepository.HasAuditForWeekAsync(week.WeekId, cancellationToken);
+        var isViceCheckAvailable = ViceCheckAvailabilityComputer.IsVisible(
+            profile?.IsViceSurveyCompleted ?? false,
+            week.Status == WeekStatus.Closed,
+            week.StartDate,
+            dateTimeProvider.UtcNow,
+            alreadyAudited);
 
         var groups = weekGoals.Select(wg =>
         {
@@ -81,6 +94,7 @@ public sealed class GetWeeklyHabitsQueryHandler(
             week.Status.ToString(),
             week.TotalWeeklySpEarned,
             shieldsAvailable,
+            isViceCheckAvailable,
             groups));
     }
 }

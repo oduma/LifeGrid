@@ -22,4 +22,8 @@ internal sealed class MauiToastNotificationService : IToastNotificationService
     public Task ShowInfoAsync(string title, string message, CancellationToken ct = default)
         => MainThread.InvokeOnMainThreadAsync(() =>
             Shell.Current.CurrentPage!.DisplayAlertAsync(title, message, "OK"));
+
+    public Task ShowErrorAsync(string title, string message, CancellationToken ct = default)
+        => MainThread.InvokeOnMainThreadAsync(() =>
+            Shell.Current.CurrentPage!.DisplayAlertAsync(title, message, "OK"));
 }

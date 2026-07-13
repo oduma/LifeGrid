@@ -8,7 +8,7 @@
     Title="Week Summary"
     BackgroundColor="{StaticResource Background}">
 
-    <Grid RowDefinitions="Auto,*">
+    <Grid RowDefinitions="Auto,Auto,*">
 
         <!-- Zone A: Global week header (fixed) -->
         <Border
@@ -39,8 +39,22 @@
             </Grid>
         </Border>
 
+        <!-- Zone A2: Vice Check action (conditional) -->
+        <Button
+            Grid.Row="1"
+            Margin="16,0,16,4"
+            Text="TEST ME I'M BEING GOOD"
+            Command="{Binding InitiateViceCheckCommand}"
+            IsVisible="{Binding IsViceCheckAvailable}"
+            BackgroundColor="{StaticResource Secondary}"
+            TextColor="{StaticResource OnSecondary}"
+            FontFamily="{StaticResource FontShareTechMono}"
+            FontSize="13"
+            CornerRadius="2"
+            HeightRequest="44" />
+
         <!-- Zone B+C: Read-only goal groups + habit cards -->
-        <ScrollView Grid.Row="1">
+        <ScrollView Grid.Row="2">
             <VerticalStackLayout
                 BindableLayout.ItemsSource="{Binding GoalGroups}"
                 Spacing="20"
@@ -263,6 +277,62 @@
 
             </VerticalStackLayout>
         </ScrollView>
+
+        <!-- Vice Check audit overlay -->
+        <Grid
+            Grid.Row="0"
+            Grid.RowSpan="3"
+            BackgroundColor="#CC000000"
+            IsVisible="{Binding IsViceCheckOverlayVisible}">
+            <Border
+                Margin="24"
+                Padding="20"
+                VerticalOptions="Center"
+                BackgroundColor="{StaticResource Surface}"
+                StrokeShape="RoundRectangle 2"
+                StrokeThickness="1"
+                Stroke="{StaticResource SurfaceBrush}">
+                <VerticalStackLayout Spacing="14">
+
+                    <Label
+                        Text="{Binding ViceCheckQuestion}"
+                        FontFamily="{StaticResource FontDMMono}"
+                        FontSize="16"
+                        FontAttributes="Bold"
+                        TextColor="{StaticResource OnSurface}"
+                        LineBreakMode="WordWrap" />
+
+                    <Editor
+                        Text="{Binding ViceCheckAnswer}"
+                        Placeholder="Type your answer..."
+                        FontFamily="{StaticResource FontShareTechMono}"
+                        FontSize="13"
+                        TextColor="{StaticResource OnSurface}"
+                        BackgroundColor="{StaticResource Background}"
+                        HeightRequest="120"
+                        AutoSize="TextChanges" />
+
+                    <Button
+                        Text="SUBMIT"
+                        Command="{Binding SubmitViceCheckAnswerCommand}"
+                        IsEnabled="{Binding IsViceCheckBusy, Converter={StaticResource InverseBool}}"
+                        IsVisible="{Binding IsViceCheckBusy, Converter={StaticResource InverseBool}}"
+                        BackgroundColor="{StaticResource Primary}"
+                        TextColor="{StaticResource OnPrimary}"
+                        FontFamily="{StaticResource FontShareTechMono}"
+                        FontSize="13"
+                        CornerRadius="2"
+                        HeightRequest="44" />
+
+                    <ActivityIndicator
+                        IsRunning="{Binding IsViceCheckBusy}"
+                        IsVisible="{Binding IsViceCheckBusy}"
+                        Color="{StaticResource Primary}"
+                        HeightRequest="44" />
+
+                </VerticalStackLayout>
+            </Border>
+        </Grid>
 
     </Grid>
 

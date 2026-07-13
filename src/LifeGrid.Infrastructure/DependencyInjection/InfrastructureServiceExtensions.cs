@@ -8,8 +8,10 @@ using LifeGrid.Application.Notification;
 using LifeGrid.Application.Onboarding;
 using LifeGrid.Application.UserProfile;
 using LifeGrid.Application.Vice;
+using LifeGrid.Application.ViceCheck;
 using LifeGrid.Application.Week;
 using LifeGrid.Infrastructure.AI;
+using LifeGrid.Infrastructure.Common;
 using LifeGrid.Infrastructure.Data;
 using LifeGrid.Infrastructure.Data.Repositories;
 using LifeGrid.Infrastructure.Data.Services;
@@ -37,7 +39,9 @@ public static class InfrastructureServiceExtensions
         services.AddScoped<IBadgeRepository, BadgeRepository>();
         services.AddScoped<ILoginHistoryRepository, LoginHistoryRepository>();
         services.AddScoped<INotificationRepository, NotificationRepository>();
+        services.AddScoped<IViceCheckAuditRepository, ViceCheckAuditRepository>();
         services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<LifeGridDbContext>());
+        services.AddSingleton<IRandomProvider, SystemRandomProvider>();
 
         services.AddSingleton<ISecureStorageService, SecureStorageService>();
         services.AddSingleton<IBuildSecretProvider, BuildSecretProvider>();
@@ -59,6 +63,7 @@ public static class InfrastructureServiceExtensions
         services.AddTransient<IGeminiViceSurveyService, GeminiViceSurveyService>();
         services.AddTransient<IGeminiMomentBurstService, GeminiMomentBurstService>();
         services.AddTransient<IGeminiFlashQuestService, GeminiFlashQuestService>();
+        services.AddTransient<IGeminiViceCheckService, GeminiViceCheckService>();
         services.AddTransient<IFactoryResetService, FactoryResetService>();
 
         return services;

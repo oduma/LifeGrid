@@ -290,7 +290,7 @@ The user triggers an explicit "Overwhelmed" action for a specific goal.
 * **Earning:** The app tracks accumulated `Current_SP`. Every time the user reaches a milestone of **30 SP**, the counter resets to zero and grants **1 Life Happens Shield**.
 * **Cap:** Strict maximum inventory cap of 2 Shields (3 if the Optional Survey was completed).
 
-### 4.4 Habit Level Actions
+### 4.4 Habit Level Actions (Done)
 #### 4.4.1 Flash Quests (Immediate Contextual Quests)
 * **Trigger:** By Thursday/Friday, if a user lags significantly behind on a goal, the app deploys a high-impact Flash Quest targeting the lowest completion percentage habit.
 * **Execution:** Features a dynamically calculated `Deadline DateTime` representing an immediate expiry window of **24 hours** from acceptance. Absolute hard cutoff at 20:00:00 on Sunday.
@@ -341,7 +341,7 @@ This system monitors user compliance week-by-week using the Goal's Weekly GP via
     * *Condition:* The user enters Week 3 carrying a warning and fails to hit 100% GP for that goal.
     * *Consequence:* **0 XP is awarded** for the entire week. The app automatically updates the parent Goal's `Status` to **Overwhelmed** and locks the app until that specific goal state is resolved.
 
-### 5.2 The "Test me I'm being good" Action (Vice Check)
+### 5.2 The "Test me I'm being good" Action (Vice Check) (Done)
 * **Trigger:** Available strictly on the Week Summary screen for exactly **72 hours** after the week ends, and only if the user has taken the Hidden Vices Survey.
 * **Execution:** Initiating the audit grants a flat **+20 XP**. The AI selects one `Linked Bad Habit` associated with that week's active goals and asks 1 targeted, subtle question to see if the user indulged.
 * **Penalty Math:** If the AI determines the user failed, it deducts exactly **1% per Danger Level** of the triggered bad habit retroactively from that week's Goal Progression (GP). 

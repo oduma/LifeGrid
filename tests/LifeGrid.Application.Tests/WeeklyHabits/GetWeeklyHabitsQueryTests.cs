@@ -1,7 +1,9 @@
 using FluentAssertions;
+using LifeGrid.Application.Common;
 using LifeGrid.Application.Goal;
 using LifeGrid.Application.Habit;
 using LifeGrid.Application.UserProfile;
+using LifeGrid.Application.ViceCheck;
 using LifeGrid.Application.Week;
 using LifeGrid.Application.WeeklyHabits;
 using NSubstitute;
@@ -15,14 +17,20 @@ namespace LifeGrid.Application.Tests.WeeklyHabits;
 
 public sealed class GetWeeklyHabitsQueryTests
 {
-    private readonly IWeekRepository             _weekRepo    = Substitute.For<IWeekRepository>();
-    private readonly IGoalRepository             _goalRepo    = Substitute.For<IGoalRepository>();
-    private readonly IHabitRepository            _habitRepo   = Substitute.For<IHabitRepository>();
-    private readonly IUserProfileRepository      _profileRepo = Substitute.For<IUserProfileRepository>();
+    private readonly IWeekRepository           _weekRepo    = Substitute.For<IWeekRepository>();
+    private readonly IGoalRepository           _goalRepo    = Substitute.For<IGoalRepository>();
+    private readonly IHabitRepository          _habitRepo   = Substitute.For<IHabitRepository>();
+    private readonly IUserProfileRepository    _profileRepo = Substitute.For<IUserProfileRepository>();
+    private readonly IViceCheckAuditRepository _auditRepo   = Substitute.For<IViceCheckAuditRepository>();
+    private readonly IDateTimeProvider         _clock       = Substitute.For<IDateTimeProvider>();
     private readonly GetWeeklyHabitsQueryHandler _handler;
 
     public GetWeeklyHabitsQueryTests()
-        => _handler = new GetWeeklyHabitsQueryHandler(_weekRepo, _goalRepo, _habitRepo, _profileRepo);
+    {
+        _auditRepo.HasAuditForWeekAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(false);
+        _handler = new GetWeeklyHabitsQueryHandler(
+            _weekRepo, _goalRepo, _habitRepo, _profileRepo, _auditRepo, _clock);
+    }
 
     // ── helpers ──────────────────────────────────────────────────────────────
 
@@ -126,5 +134,54 @@ public sealed class GetWeeklyHabitsQueryTests
         groups.Should().HaveCount(2);
         groups.First(g => g.GoalDescription == "A").Habits.Should().HaveCount(1);
         groups.First(g => g.GoalDescription == "B").Habits.Should().HaveCount(2);
+    }
+
+    // ── vice check availability ───────────────────────────────────────────────
+
+    [Fact]
+    public async Task IsViceCheckAvailable_True_WhenAllGatesPass()
+    {
+        var week = WeekEntity.Create(1, new DateTime(2026, 6, 15, 0, 0, 0, DateTimeKind.Utc));
+        week.Close();
+        _clock.UtcNow.Returns(new DateTime(2026, 6, 22, 10, 0, 0, DateTimeKind.Utc)); // within 72h window
+
+        var profile = UserProfileEntity.Create();
+        profile.GrantSurveyBonusShield(); // sets IsViceSurveyCompleted = true
+
+        _weekRepo.GetByIdAsync(week.WeekId, Arg.Any<CancellationToken>()).Returns(week);
+        _goalRepo.GetByIdsAsync(Arg.Any<IReadOnlyList<Guid>>(), Arg.Any<CancellationToken>())
+                 .Returns(Array.Empty<GoalAggregate>());
+        _habitRepo.GetByWeekGoalIdsAsync(Arg.Any<IReadOnlyList<Guid>>(), Arg.Any<CancellationToken>())
+                  .Returns(Array.Empty<HabitEntity>());
+        _profileRepo.GetSingleAsync(Arg.Any<CancellationToken>()).Returns(profile);
+
+        var result = await _handler.Handle(new GetWeeklyHabitsQuery(week.WeekId, null), default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.IsViceCheckAvailable.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task IsViceCheckAvailable_False_WhenAlreadyAudited()
+    {
+        var week = WeekEntity.Create(1, new DateTime(2026, 6, 15, 0, 0, 0, DateTimeKind.Utc));
+        week.Close();
+        _clock.UtcNow.Returns(new DateTime(2026, 6, 22, 10, 0, 0, DateTimeKind.Utc));
+
+        var profile = UserProfileEntity.Create();
+        profile.GrantSurveyBonusShield();
+
+        _weekRepo.GetByIdAsync(week.WeekId, Arg.Any<CancellationToken>()).Returns(week);
+        _goalRepo.GetByIdsAsync(Arg.Any<IReadOnlyList<Guid>>(), Arg.Any<CancellationToken>())
+                 .Returns(Array.Empty<GoalAggregate>());
+        _habitRepo.GetByWeekGoalIdsAsync(Arg.Any<IReadOnlyList<Guid>>(), Arg.Any<CancellationToken>())
+                  .Returns(Array.Empty<HabitEntity>());
+        _profileRepo.GetSingleAsync(Arg.Any<CancellationToken>()).Returns(profile);
+        _auditRepo.HasAuditForWeekAsync(week.WeekId, Arg.Any<CancellationToken>()).Returns(true);
+
+        var result = await _handler.Handle(new GetWeeklyHabitsQuery(week.WeekId, null), default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.IsViceCheckAvailable.Should().BeFalse();
     }
 }

@@ -6,6 +6,7 @@ public record WeeklyHabitsDashboardDto(
     string   Status,
     int      TotalWeeklySpEarned,
     int      ShieldsAvailable,
+    bool     IsViceCheckAvailable,
     IReadOnlyList<WeeklyGoalGroupDto> GoalGroups);
 
 public record WeeklyGoalGroupDto(

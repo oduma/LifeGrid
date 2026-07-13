@@ -34,4 +34,6 @@ public sealed class WeekGoal
         GoalWeeklyGp       = newGp;
         GoalWeeklyXpEarned += additionalXpEarned;
     }
+
+    public void ApplyRetroactiveGpPenalty(double newGp) => GoalWeeklyGp = Math.Max(0.0, newGp);
 }

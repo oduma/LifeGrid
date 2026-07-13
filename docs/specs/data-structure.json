@@ -135,5 +135,22 @@
         "Timestamp": "DateTime"
       }
     ]
+  },
+
+  "ViceCheckAudit": {
+    "_note": "Phase 33: standalone table backing the 'Test me I'm being good' audit loop. WeekID/Week_GoalID/BadHabitID are loose references (no FK constraint), consistent with Notification.DeepLinkUrl-style references elsewhere. Goal_Description/Bad_Habit_Description/Danger_Level are snapshotted at Stage 1 so the audit remains meaningful even if the source Goal's bad habits are later changed.",
+    "AuditID": "Guid // PK",
+    "WeekID": "Guid // Loose reference → Week; the closed week this audit was run against",
+    "Week_GoalID": "Guid // Loose reference → Week.Week_Goal_Items; the specific goal-week penalized on failure",
+    "BadHabitID": "Guid // Loose reference → Goal.Linked_Bad_Habits; the bad habit selected for this check-in",
+    "Goal_Description": "String // Snapshot of the owning Goal's description at Stage 1",
+    "Bad_Habit_Description": "String // Snapshot of the selected bad habit's description at Stage 1",
+    "Danger_Level": "Integer // Snapshot of the selected bad habit's Danger_Level at Stage 1; drives the retroactive penalty math",
+    "Question": "String // Ambient question returned by Prompt6.txt at Stage 1",
+    "Answer": "String? // User's free-text justification submitted at Stage 2; null while Status = Pending",
+    "Status": "String (Pending, Passed, Failed) // Pending after Stage 1; Passed/Failed after Stage 2 resolves",
+    "Penalty_Percent_Applied": "Float? // Set only when Status = Failed; equals Danger_Level (1% per Danger Level point)",
+    "Created_At": "DateTime // UTC; set when the Stage 1 InitiateViceCheckCommand commits",
+    "Resolved_At": "DateTime? // UTC; set when the Stage 2 ResolveViceCheckCommand commits; null while Status = Pending"
   }
 }

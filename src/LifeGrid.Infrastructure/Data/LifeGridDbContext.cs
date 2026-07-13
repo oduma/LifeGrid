@@ -5,6 +5,7 @@ using LifeGrid.Domain.Habit;
 using LifeGrid.Domain.Notification;
 using LifeGrid.Domain.Onboarding;
 using LifeGrid.Domain.UserProfile;
+using LifeGrid.Domain.ViceCheck;
 using LifeGrid.Domain.Week;
 using LifeGrid.Domain.WeekGoal;
 using Microsoft.EntityFrameworkCore;
@@ -24,6 +25,7 @@ public sealed class LifeGridDbContext(DbContextOptions<LifeGridDbContext> option
     public DbSet<Habit>             Habits              => Set<Habit>();
     public DbSet<CompletedValueLog> CompletedValueLogs  => Set<CompletedValueLog>();
     public DbSet<Notification>      Notifications       => Set<Notification>();
+    public DbSet<ViceCheckAudit>    ViceCheckAudits     => Set<ViceCheckAudit>();
 
     public Task CommitAsync(CancellationToken ct = default) => SaveChangesAsync(ct);
 

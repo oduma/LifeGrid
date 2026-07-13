@@ -2,20 +2,23 @@ using LifeGrid.Application.Common;
 using LifeGrid.Application.Goal;
 using LifeGrid.Application.Habit;
 using LifeGrid.Application.UserProfile;
+using LifeGrid.Application.ViceCheck;
 using LifeGrid.Application.Week;
 using LifeGrid.Application.WeeklyHabits;
 using LifeGrid.Domain.Common;
+using LifeGrid.Domain.Week;
 using MediatR;
 using HabitEntity = LifeGrid.Domain.Habit.Habit;
 
 namespace LifeGrid.Application.Home;
 
 public sealed class GetCurrentWeekHabitsQueryHandler(
-    IWeekRepository        weekRepository,
-    IGoalRepository        goalRepository,
-    IHabitRepository       habitRepository,
-    IUserProfileRepository profileRepository,
-    IDateTimeProvider      dateTimeProvider)
+    IWeekRepository           weekRepository,
+    IGoalRepository           goalRepository,
+    IHabitRepository          habitRepository,
+    IUserProfileRepository    profileRepository,
+    IDateTimeProvider         dateTimeProvider,
+    IViceCheckAuditRepository auditRepository)
     : IRequestHandler<GetCurrentWeekHabitsQuery, Result<WeeklyHabitsDashboardDto>>
 {
     public async Task<Result<WeeklyHabitsDashboardDto>> Handle(
@@ -75,12 +78,21 @@ public sealed class GetCurrentWeekHabitsQueryHandler(
         var profile          = await profileRepository.GetSingleAsync(cancellationToken);
         var shieldsAvailable = profile?.Economy.ShieldsAvailable ?? 0;
 
+        var alreadyAudited = await auditRepository.HasAuditForWeekAsync(week.WeekId, cancellationToken);
+        var isViceCheckAvailable = ViceCheckAvailabilityComputer.IsVisible(
+            profile?.IsViceSurveyCompleted ?? false,
+            week.Status == WeekStatus.Closed,
+            week.StartDate,
+            dateTimeProvider.UtcNow,
+            alreadyAudited);
+
         return Result<WeeklyHabitsDashboardDto>.Success(new WeeklyHabitsDashboardDto(
             week.WeekId,
             week.StartDate,
             week.Status.ToString(),
             week.TotalWeeklySpEarned,
             shieldsAvailable,
+            isViceCheckAvailable,
             groups));
     }
 }

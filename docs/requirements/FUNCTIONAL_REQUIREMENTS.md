@@ -5418,3 +5418,239 @@ The existing test class holds `SeedProfile` as a `private static readonly` field
 
 ### 4. Test bug caught during the initial run — `GenerateFlashQuestCommandTests`
 The first draft of `LaggingGoalBelow50Pct_CallsGeminiAndInjectsFlashHabit` (and two sibling tests) declared a standalone `var habitId = Guid.NewGuid()` separate from the `Habit` entity constructed via `HabitEntity.Create(...)`, which always generates its own internal `HabitId`. This caused the handler's `habitId → WeekGoalId` attribution dictionary to never match the completion-summary/AI-response habit id, silently producing `QuestsInjected == 0` in a test meant to exercise the happy path. Fixed by reading `habit.HabitId` directly instead of a separately-generated `Guid`. No production code was affected — `GenerateFlashQuestCommandHandler`'s attribution logic was correct; only the test fixture was wrong.
+
+# Phase 33 — Vice Check Audit ("Test me I'm being good") & Penalties
+
+**Source:** `docs/requirements/Phase-33-requirements.md`
+**Clarifications recorded:** 2026-07-10
+**Status:** DONE — 459 tests passing (137 Domain / 229 Application / 93 Infrastructure)
+
+## P33.1 — Clarifications Recorded
+
+| # | Question | Answer |
+|---|---|---|
+| 1 | Stage 1 → Stage 2 context handoff & audit history | **Persisted `ViceCheckAudit` table.** New standalone entity (`WeekId`, `WeekGoalId`, `BadHabitId`, `GoalDescription`, `BadHabitDescription`, `DangerLevel`, `Question`, `Answer`, `Status`, `PenaltyPercentApplied`, `CreatedAt`, `ResolvedAt`), following the same standalone-table pattern as `Badge`/`Notification`/`LoginHistory`. Stage 1 creates a `Pending` row and returns `(AuditId, Question)`; Stage 2 takes `(AuditId, Answer)`, loads the row for context, and updates it in place. New EF migration required. |
+| 2 | Modal UI pattern | **In-page overlay** on `WeekSummaryPage.xaml`, same convention as the existing proof-image overlay (`IsVisible`-gated `Grid`/`Border`, no new route). |
+| 3 | Failure feedback styling | **Reuse `IToastNotificationService`** (native `DisplayAlert`) for both success and failure messages — add a `ShowErrorAsync` sharing the same native-alert implementation as `ShowInfoAsync`, differentiated only by title/wording, not by the Error color token (native alerts can't be recolored). |
+| 4 | *(Added after initial plan approval)* Should Stage 1 avoid re-asking a question already asked about the same bad habit in a prior audit? | **Yes.** `IViceCheckAuditRepository` gains `GetPreviousQuestionsForBadHabitAsync(Guid badHabitId)`. `InitiateViceCheckCommandHandler` fetches every prior `Question` recorded against the selected `BadHabitId` (across all past audits, any `Status`) and includes them as a `previous_questions` array on that bad habit's entry in the `Prompt6.txt` payload. `Prompt6.txt` was updated with a new rule 3 ("Avoid Repetition") instructing the AI to produce a question that differs meaningfully in wording and angle from every listed prior question. Scoped per-`BadHabitId` (not per-Goal or global) since the repeat-question concern is inherently tied to the specific vice being probed, and `BadHabitId` is stable for the lifetime of a Goal (the Hidden Vices survey is single-use per `IsViceSurveyCompleted`, so bad habits are never regenerated after Phase 9). |
+
+## P33.2 — Resolved Ambiguities (no user input needed — resolved by re-reading the source specs)
+
+| # | Ambiguity | Resolution |
+|---|---|---|
+| 1 | Who performs the random bad-habit selection — our code or the AI? | **Our code.** Phase-33-requirements.md §2.2 explicitly orders this as step 2 ("Context Selection: ... randomly select exactly one") *before* step 3 ("AI Generation: Pass the selected bad habit context into `Prompt6.txt`"). `Prompt6.txt`'s own internal "parse array, randomly select one" instruction is written generically for reuse; our integration sends it a single-element payload (one goal, one bad habit), so its own selection step is a no-op over an array of one. This sidesteps the AI-attribution problem entirely (no need to extend `Prompt6.txt`'s schema with IDs, unlike `Prompt8.txt` in Phase 32) and gives us a fully testable, deterministic-under-mock C# selection step via a new `IRandomProvider` abstraction (mirrors `IDateTimeProvider`). |
+| 2 | `Danger_Level` range: data-structure.json says `Integer (1-5)`, Phase-33-requirements.md §2.3 says `Integer (1-10)` | **No code impact either way** — `LinkedBadHabit.DangerLevel` is an unconstrained `int` already populated by Gemini during the Phase 9 vice survey with no range validation today. The penalty formula (`GP -= DangerLevel`) works identically regardless of the actual observed range. Noted here for awareness; no clamping added. |
+| 3 | Can the audit modal be dismissed/cancelled once opened? | **No cancel action.** The user has already been irreversibly awarded +20 XP the instant Stage 1 completes ("regardless of the outcome" per spec), so the modal has no cancel/dismiss control — the user must submit an answer to close it. This keeps the once-per-week guard trivial (`any ViceCheckAudit row exists for this WeekId` blocks re-initiation) without needing a "resume a pending audit" flow. Accepted edge case: if the app is killed mid-modal, that week's audit is permanently stuck `Pending` and the button never reappears for it — acceptable for this phase's scope. |
+| 4 | "Local device time" (spec §3.1) vs. server-side clock | **`IDateTimeProvider.UtcNow`**, matching every other temporal comparison in the app (`WeekClosureStateComputer`, `FlashQuestTriggerService`, etc.) — none of them use literal device-local time either. |
+
+## P33.3 — Domain: Vice Check Primitives
+
+**New entity `ViceCheckAudit`** (`src/LifeGrid.Domain/ViceCheck/ViceCheckAudit.cs`):
+```csharp
+public enum ViceCheckStatus { Pending, Passed, Failed }
+
+public sealed class ViceCheckAudit
+{
+    public static ViceCheckAudit Create(
+        Guid weekId, Guid weekGoalId, Guid badHabitId,
+        string goalDescription, string badHabitDescription, int dangerLevel,
+        string question, DateTime createdAt) => new() { ... Status = ViceCheckStatus.Pending, CreatedAt = createdAt };
+
+    public Guid AuditId { get; }
+    public Guid WeekId { get; }
+    public Guid WeekGoalId { get; }
+    public Guid BadHabitId { get; }
+    public string GoalDescription { get; }
+    public string BadHabitDescription { get; }
+    public int DangerLevel { get; }
+    public string Question { get; }
+    public string? Answer { get; private set; }
+    public ViceCheckStatus Status { get; private set; }
+    public double? PenaltyPercentApplied { get; private set; }
+    public DateTime CreatedAt { get; }
+    public DateTime? ResolvedAt { get; private set; }
+
+    public void MarkPassed(string answer, DateTime resolvedAt) { ... } // Status = Passed
+    public void MarkFailed(string answer, double penaltyPercent, DateTime resolvedAt) { ... } // Status = Failed
+}
+```
+
+**`WeekGoal`** (`src/LifeGrid.Domain/WeekGoal/WeekGoal.cs`) — add:
+```csharp
+public void ApplyRetroactiveGpPenalty(double newGp) => GoalWeeklyGp = Math.Max(0.0, newGp);
+```
+
+**`GamificationCalculationEngine`** (`src/LifeGrid.Domain/Gamification/GamificationCalculationEngine.cs`) — add:
+```csharp
+// Penalty % = DangerLevel * 1%; subtracting DangerLevel directly off the 0–100 GP scale is equivalent.
+public static double ApplyVicePenalty(double currentGp, int dangerLevel)
+    => Math.Max(0.0, currentGp - dangerLevel);
+```
+
+`ProcrastinationEscalationEngine.Evaluate` (Phase 31) is reused unmodified — the retroactive penalty simply re-invokes it with `(weekGoal.PenaltyState, newGp, weekGoal.GoalWeeklyXpEarned)`, which naturally produces the `Clean → Level1Warning` transition the spec calls out, and also cascades into `ProbationWeek2`/`ReckoningWeek3`/`Goal.MarkOverwhelmed()` if the `WeekGoal` was already degraded — a direct, intentional consequence of "instantly trigger the Procrastination Escalator (Phase 31) logic" rather than a special case limited to the Level1Warning boundary.
+
+## P33.4 — Application: Availability & Temporal Window
+
+**`ViceCheckAvailabilityComputer`** (`src/LifeGrid.Application/ViceCheck/ViceCheckAvailabilityComputer.cs`) — pure static function, unit-testable in isolation (satisfies the §4 "Temporal Visibility Test" TDD invariant):
+```csharp
+public static class ViceCheckAvailabilityComputer
+{
+    public static bool IsVisible(
+        bool isViceSurveyCompleted, bool isWeekClosed, DateTime weekStartDate,
+        DateTime now, bool alreadyAudited)
+    {
+        if (!isViceSurveyCompleted || !isWeekClosed || alreadyAudited) return false;
+        var cutoff = weekStartDate.AddDays(6).AddHours(72); // EndDate (StartDate+6, Phase 30 convention) + 72h
+        return now <= cutoff;
+    }
+}
+```
+`EndDate = StartDate.AddDays(6)` reuses the exact convention already established in `WeekClosureStateComputer`/Phase 30 (`Week.End_Date` is never persisted). `cutoff = EndDate.AddHours(72)` is the only interpretation of "72 hours after End_Date" consistent with the §4 TDD invariant ("`End_Date + 73 hours` → `false`"): `EndDate` here is `StartDate.AddDays(6)` at `00:00`, so the window is `StartDate.AddDays(6) 00:00` through `StartDate.AddDays(9) 00:00` — i.e. through the end of Tuesday into the very start of Wednesday. *(Note: this is 24 hours earlier than the prose "Sunday 11:59 PM to Wednesday 11:59 PM" example in §2.1 — the TDD invariant is treated as authoritative since it is directly testable and the prose is illustrative.)*
+
+**`IViceCheckAuditRepository`** (`src/LifeGrid.Application/ViceCheck/IViceCheckAuditRepository.cs`):
+```csharp
+public interface IViceCheckAuditRepository
+{
+    Task AddAsync(ViceCheckAudit audit, CancellationToken ct = default);
+    Task<ViceCheckAudit?> GetByIdAsync(Guid auditId, CancellationToken ct = default);
+    Task<bool> HasAuditForWeekAsync(Guid weekId, CancellationToken ct = default);
+    Task<IReadOnlyList<string>> GetPreviousQuestionsForBadHabitAsync(Guid badHabitId, CancellationToken ct = default);
+}
+```
+`GetPreviousQuestionsForBadHabitAsync` returns every `Question` ever recorded against `badHabitId`, across all past audits regardless of `Status` (Pending/Passed/Failed all represent a question the user has already seen) — feeds the repeat-avoidance rule added to `Prompt6.txt` (see P33.1 #4).
+
+**`IRandomProvider`** (`src/LifeGrid.Application/Common/IRandomProvider.cs`):
+```csharp
+public interface IRandomProvider { int Next(int maxExclusive); }
+```
+
+## P33.5 — Application: `InitiateViceCheckCommand` (Stage 1)
+
+```csharp
+public record InitiateViceCheckCommand(Guid WeekId) : IRequest<Result<InitiateViceCheckResult>>;
+public record InitiateViceCheckResult(Guid AuditId, string Question);
+```
+
+Handler dependencies: `IWeekRepository`, `IGoalRepository`, `IUserProfileRepository`, `IViceCheckAuditRepository`, `IGeminiViceCheckService`, `IRandomProvider`, `IDateTimeProvider`, `IUnitOfWork`, `IEconomyStateBroadcaster`.
+
+1. Load `week` (with `WeekGoals`) — `Failure("week_not_found")` if null.
+2. Guard `week.Status == Closed` — `Failure("week_not_closed")` otherwise.
+3. Load `profile`; guard `profile.IsViceSurveyCompleted == true` — `Failure("vice_survey_not_completed")` otherwise.
+4. Guard `!ViceCheckAvailabilityComputer.IsVisible(...)` inverse check *or* simpler direct re-check of the temporal window + `!await auditRepo.HasAuditForWeekAsync(week.WeekId)` — `Failure("window_expired")` / `Failure("already_audited")` respectively.
+5. `goalIds = week.WeekGoals.Select(wg => wg.GoalId).Distinct()`; `goals = await goalRepository.GetByIdsAsync(goalIds)`.
+6. Flatten `(WeekGoal, Goal, LinkedBadHabit)` triples across all loaded goals' `LinkedBadHabits`. If empty → `Failure("no_bad_habits_available")`.
+7. `selected = triples[randomProvider.Next(triples.Count)]`.
+8. `previousQuestions = await auditRepo.GetPreviousQuestionsForBadHabitAsync(selected.BadHabit.BadHabitId, ct)`.
+9. Build the Prompt6 payload as a **single-element** array matching its expected `[{description, bad_habits:[{description, danger_level, previous_questions}]}]` shape, containing only `selected`, with `previous_questions` set to `previousQuestions` (an empty array if none exist yet).
+11. `profile.ApplyXpAndLevelProgression(20)` — **Lifetime XP only**; no SP, no `WeekGoal.GoalWeeklyXpEarned` change (per spec, this bonus is explicitly scoped to `Lifetime_XP`).
+12. `audit = ViceCheckAudit.Create(week.WeekId, selected.WeekGoal.WeekGoalId, selected.BadHabit.BadHabitId, selected.Goal.Description, selected.BadHabit.Description, selected.BadHabit.DangerLevel, aiResult.Value!.Question, dateTimeProvider.UtcNow)`.
+13. `await auditRepo.AddAsync(audit)` → `await unitOfWork.CommitAsync()` (single atomic commit: XP grant + audit row).
+14. `broadcaster.BroadcastEconomy(...)`.
+15. Return `Success(new InitiateViceCheckResult(audit.AuditId, audit.Question))`.
+
+*The +20 XP is granted unconditionally at step 11, before the AI's actual outcome is known in Stage 2 — satisfying the §4 "Instant XP Test" invariant that XP is awarded independently of Stage 2's result.*
+
+## P33.6 — Application: `ResolveViceCheckCommand` (Stage 2)
+
+```csharp
+public record ResolveViceCheckCommand(Guid AuditId, string Answer) : IRequest<Result<ResolveViceCheckResult>>;
+public record ResolveViceCheckResult(bool Persists, double? NewGp, double? PenaltyPercent, bool TriggersOverwhelmed);
+```
+
+1. Load `audit` — `Failure("audit_not_found")` if null; guard `audit.Status == Pending` — `Failure("already_resolved")` otherwise.
+2. Build the Prompt7 payload from `audit`'s cached context (`GoalDescription`, `BadHabitDescription`, `DangerLevel`, `Question`) plus `request.Answer`.
+3. `aiResult = await geminiViceCheckService.EvaluateAnswerAsync(payloadJson, ct)` → propagate `Failure` on error.
+4. `persists = aiResult.Value!.Persists`.
+5. **If `!persists`:** `audit.MarkPassed(request.Answer, dateTimeProvider.UtcNow)` → commit → `Success(new(false, null, null, false))`.
+6. **If `persists`:**
+   a. `weekGoal = await weekRepository.GetWeekGoalByIdAsync(audit.WeekGoalId)` — `Failure("weekgoal_not_found")` if null.
+   b. `newGp = GamificationCalculationEngine.ApplyVicePenalty(weekGoal.GoalWeeklyGp, audit.DangerLevel)`.
+   c. `weekGoal.ApplyRetroactiveGpPenalty(newGp)`.
+   d. `esc = ProcrastinationEscalationEngine.Evaluate(weekGoal.PenaltyState, newGp, weekGoal.GoalWeeklyXpEarned)`.
+   e. `weekGoal.SetPenaltyState(esc.NewPenaltyState)`; `weekGoal.ApplyXpPenalty(esc.PenalizedXp)` (mirrors `CloseWeekCommandHandler`'s unconditional call).
+   f. If `esc.TriggersOverwhelmed`: load `Goal` via `goalRepository.GetByIdAsync(weekGoal.GoalId)` → `goal?.MarkOverwhelmed()`.
+   g. `audit.MarkFailed(request.Answer, audit.DangerLevel, dateTimeProvider.UtcNow)`.
+   h. `await unitOfWork.CommitAsync()` (single atomic commit: GP penalty + PenaltyState + possible XP/Overwhelmed + audit resolution).
+   i. `broadcaster.Broadcast()`.
+   j. Return `Success(new(true, newGp, audit.DangerLevel, esc.TriggersOverwhelmed))`.
+
+## P33.7 — Application: Availability Wiring into `WeeklyHabitsDashboardDto`
+
+Add `bool IsViceCheckAvailable` to `WeeklyHabitsDashboardDto`. Both `GetWeeklyHabitsQueryHandler` (used by `WeekSummaryViewModel`) and `GetCurrentWeekHabitsQueryHandler` compute it via `ViceCheckAvailabilityComputer.IsVisible(profile.IsViceSurveyCompleted, week.Status == Closed, week.StartDate, dateTimeProvider.UtcNow, await auditRepo.HasAuditForWeekAsync(week.WeekId))` — trivially `false` for `GetCurrentWeekHabitsQueryHandler` since an active (non-`Closed`) week never qualifies, but both handlers construct the same DTO type (per the Phase 31 precedent) so both need the new dependency wired through.
+
+## P33.8 — Infrastructure: Repository, Gemini Service, Migration
+
+**`ViceCheckAuditRepository`** (`src/LifeGrid.Infrastructure/Data/Repositories/ViceCheckAuditRepository.cs`) — standard EF implementation of `IViceCheckAuditRepository` against a new `DbSet<ViceCheckAudit> ViceCheckAudits`.
+
+**`ViceCheckAuditConfiguration`** — new table `ViceCheckAudits`, `AuditId` PK (`ValueGeneratedNever`), `Status` via `.HasConversion<string>()`, plain `Guid` columns for `WeekId`/`WeekGoalId`/`BadHabitId` (no cross-aggregate FK constraints, consistent with `Notification.DeepLinkUrl`-style loose references).
+
+**New EF migration** — `Phase33_AddViceCheckAudits` (adds the `ViceCheckAudits` table only; no other schema changes).
+
+**`SystemRandomProvider`** (`src/LifeGrid.Infrastructure/Common/SystemRandomProvider.cs`) — `Random.Shared.Next(maxExclusive)`; registered `Singleton` (mirrors `IDateTimeProvider`).
+
+**`GeminiViceCheckService`** (`src/LifeGrid.Infrastructure/AI/GeminiViceCheckService.cs`) — implements `IGeminiViceCheckService`:
+```csharp
+public interface IGeminiViceCheckService
+{
+    Task<Result<GenerateQuestionResult>> GenerateQuestionAsync(string goalAndHabitJson, CancellationToken ct = default);
+    Task<Result<EvaluateAnswerResult>> EvaluateAnswerAsync(string userResponseJson, CancellationToken ct = default);
+}
+public record GenerateQuestionResult(string Question);
+public record EvaluateAnswerResult(bool Persists);
+```
+Follows the exact `GeminiViceSurveyService` pattern — embedded `prompt6.txt`/`prompt7.txt`, `${GOALS_AND_HABITS_JSON}`/`${USER_RESPONSE_JSON}` placeholder substitution, `StripCodeFences`, try/catch mapping to `Result.Failure`. `GenerateQuestionAsync` extracts only `ambient_question` from Prompt6's response (the other echoed fields — `selected_goal_description`, `selected_bad_habit`, `danger_level` — are redundant with what the caller already has and are discarded). `EvaluateAnswerAsync` extracts only `persists` from Prompt7's response (`analysis_reasoning` is discarded — not persisted anywhere in this phase's scope).
+
+**`prompt6.txt`** — **schema change** (per P33.1 #4): the caller-constructed payload now tags each bad-habit entry with a `previous_questions` array (possibly empty), and the prompt's own rule 3 ("Avoid Repetition") instructs the AI to produce a question that differs meaningfully from every listed prior question. `prompt7.txt` is copied verbatim, no schema change. Both are copied into `src/LifeGrid.Infrastructure/AI/Prompts/`, registered as `EmbeddedResource` in `LifeGrid.Infrastructure.csproj`. As with Phase 32's `prompt8.txt` update, the `docs/specs/assets/prompts/prompt6.txt` reference copy and the embedded Infrastructure copy must be updated together so they never drift.
+
+## P33.9 — Presentation: Week Summary UI
+
+**`WeekSummaryViewModel`** — add:
+- `[ObservableProperty] bool IsViceCheckAvailable` — set from `dto.IsViceCheckAvailable` in `LoadAsync()`.
+- `[ObservableProperty] bool IsViceCheckOverlayVisible`, `[ObservableProperty] string ViceCheckQuestion`, `[ObservableProperty] string ViceCheckAnswer`, `[ObservableProperty] bool IsViceCheckBusy`.
+- Private `Guid? _currentAuditId`.
+- `[RelayCommand] InitiateViceCheckAsync()` — sends `InitiateViceCheckCommand(_weekId)`; on success, sets `_currentAuditId`, `ViceCheckQuestion`, `ViceCheckAnswer = string.Empty`, `IsViceCheckOverlayVisible = true`; on failure, `toastService.ShowErrorAsync(...)`.
+- `[RelayCommand] SubmitViceCheckAnswerAsync()` — guards non-empty `ViceCheckAnswer`; `IsViceCheckBusy = true`; sends `ResolveViceCheckCommand(_currentAuditId.Value, ViceCheckAnswer)`; on completion: `IsViceCheckBusy = false`, `IsViceCheckOverlayVisible = false`, shows success (`"Integrity maintained. 20 XP secured."`) or failure (`"Vice detected. -{PenaltyPercent}% GP applied retroactively."`) toast via `IToastNotificationService`, then `await LoadAsync()` to refresh the GP display and re-fetch `IsViceCheckAvailable` (now `false`).
+- No dismiss/cancel command — per P33.2 note 3, the overlay has no close affordance besides submitting an answer.
+
+**`IToastNotificationService`** — add `Task ShowErrorAsync(string title, string message, CancellationToken ct = default)`, implemented identically to `ShowInfoAsync` (native `DisplayAlertAsync`) in `MauiToastNotificationService`.
+
+**`WeekSummaryPage.xaml`** — add:
+- "Test me I'm being good" `Button`, `IsVisible="{Binding IsViceCheckAvailable}"`, `Command="{Binding InitiateViceCheckCommand}"`.
+- In-page overlay `Grid` (full-page, semi-transparent background) `IsVisible="{Binding IsViceCheckOverlayVisible}"` containing: a `Label` bound to `ViceCheckQuestion` (primary typography token), an `Editor` (multi-line) bound to `ViceCheckAnswer`, a "Submit" `Button` bound to `SubmitViceCheckAnswerCommand`, and an `ActivityIndicator` gated on `IsViceCheckBusy` shown in place of / over the submit button while Stage 2 is in flight.
+
+## P33.10 — TDD Invariants
+
+| Test | Layer | Assertion |
+|---|---|---|
+| `IsVisible_WithinWindow_ReturnsTrue` / `AtExactCutoff_ReturnsTrue` / `73HoursPastEndDate_ReturnsFalse` | Application | `ViceCheckAvailabilityComputer` — the §4 "Temporal Visibility Test" invariant |
+| `IsVisible_SurveyNotCompleted_ReturnsFalse` / `WeekNotClosed_ReturnsFalse` / `AlreadyAudited_ReturnsFalse` | Application | Each gate independently blocks visibility |
+| `ApplyVicePenalty_DangerLevel5_Gp82_ReturnsGp77` | Domain | The §4 "Penalty Math Test" invariant |
+| `InitiateViceCheck_AwardsXpRegardlessOfLaterOutcome` | Application | The §4 "Instant XP Test" invariant — XP granted at Stage 1 commit, independent of Stage 2 |
+| `InitiateViceCheck_WeekNotClosed_ReturnsFailure` / `_SurveyNotCompleted_ReturnsFailure` / `_AlreadyAudited_ReturnsFailure` / `_NoBadHabitsAvailable_ReturnsFailure` | Application | Guard clauses |
+| `InitiateViceCheck_IncludesPreviousQuestionsForSelectedBadHabit_InGeminiPayload` | Application | Prior `Question`s recorded against the selected `BadHabitId` are fetched and included in the `previous_questions` array sent to `IGeminiViceCheckService.GenerateQuestionAsync` |
+| `InitiateViceCheck_NoPriorAudits_SendsEmptyPreviousQuestionsArray` | Application | First-ever check on a bad habit sends `previous_questions: []`, not a missing/null field |
+| `ResolveViceCheck_PersistsFalse_NoGpChange_MarksPassed` | Application | Pass path leaves `GoalWeeklyGp` untouched |
+| `ResolveViceCheck_PersistsTrue_DangerLevel5_Gp82_AppliesPenalty_ShiftsCleanToLevel1Warning` | Application | End-to-end version of the Penalty Math Test through the full command handler |
+| `ResolveViceCheck_PersistsTrue_CascadesToOverwhelmed_WhenAlreadyProbation` | Application | Confirms full `ProcrastinationEscalationEngine` reuse, not just the Level1Warning special case |
+| `ResolveViceCheck_AlreadyResolved_ReturnsFailure` | Application | Guards against double-resolution |
+| `ViceCheckAuditRepository_HasAuditForWeek_*` | Infrastructure | Repository guard query |
+| `ViceCheckAuditRepository_GetPreviousQuestionsForBadHabit_ReturnsAllPriorQuestions_AnyStatus` / `_NoPriorAudits_ReturnsEmpty` | Infrastructure | Repeat-avoidance data source, scoped per `BadHabitId`, unfiltered by `Status` |
+| `GeminiViceCheckService_GenerateQuestion_ExtractsAmbientQuestion` / `EvaluateAnswer_ExtractsPersists` | Infrastructure | JSON parse round-trips against `prompt6.txt`/`prompt7.txt` output shapes |
+
+## P33.11 — EF Migration
+
+**Required.** New `ViceCheckAudits` table (see P33.8). All other mutated columns (`WeekGoal.GoalWeeklyGp`, `PenaltyState`, `GoalWeeklyXpEarned`, `Goal.Status`, `UserProfile.Economy.LifetimeXp`) are already mapped from earlier phases.
+
+## P33.12 — Implementation Notes (Post-Approval Corrections)
+
+### 1. `dotnet ef migrations add` requires bypassing the Presentation project as startup
+`LifeGrid.Presentation.csproj` is single-targeted at `net10.0-android` (declared via the plural `<TargetFrameworks>` tag), which makes the EF Core CLI treat it as multi-targeted and fail with `MSB4057: The target "ResolvePackageAssets" does not exist` when used as `--startup-project`. Passing `--framework net10.0-android` doesn't help either, since `LifeGrid.Infrastructure` (the project being migrated) only targets plain `net10.0` and has no `net10.0-android` build output to select. The fix: `LifeGrid.Infrastructure` already has a `LifeGridDbContextFactory : IDesignTimeDbContextFactory<LifeGridDbContext>` (in `Data/Factories/`) left over from earlier phases — running `dotnet ef migrations add Phase33_AddViceCheckAudits --project src/LifeGrid.Infrastructure --context LifeGridDbContext` with **no `--startup-project`** lets EF Core discover and use that factory directly, sidestepping the Android multi-target problem entirely. Worth remembering for any future phase that needs a migration.
+
+### 2. `InitiateViceCheckCommandHandler` simplified the temporal-window check
+The plan's step 4 described a combined "guard temporal window and `!HasAuditForWeekAsync`" using `ViceCheckAvailabilityComputer.IsVisible(...)`. In the actual handler, `week.Status == Closed`, `profile.IsViceSurveyCompleted`, and `alreadyAudited` are already validated individually (each with its own distinct failure code — `week_not_closed`, `vice_survey_not_completed`, `already_audited`) *before* the temporal check runs. Calling `ViceCheckAvailabilityComputer.IsVisible` at that point would mean passing already-known-true values for every parameter except `now`, which is functionally correct but reads oddly. The handler instead inlines the cutoff computation directly (`week.StartDate.AddDays(6).AddHours(72)`) for the final `window_expired` guard. `ViceCheckAvailabilityComputer.IsVisible` itself is unchanged and is still the single source of truth used by `GetWeeklyHabitsQueryHandler`/`GetCurrentWeekHabitsQueryHandler` for the read-only dashboard flag.
+
+### 3. Test-authoring bug caught before the first run — `Arg.Do` capture pattern
+Two `InitiateViceCheckCommandTests` (`IncludesPreviousQuestionsForSelectedBadHabit_InGeminiPayload`, `NoPriorAudits_SendsEmptyPreviousQuestionsArray`) initially `await`ed the NSubstitute configuration call itself (`await _gemini.GenerateQuestionAsync(Arg.Do<string>(...), ...)`) instead of treating it as a substitute setup statement. Caught on review before the test suite was run for the first time: the correct pattern configures the substitute (`_gemini.GenerateQuestionAsync(Arg.Do<string>(p => capturedPayload = p), Arg.Any<CancellationToken>()).Returns(...)`, no `await`, with an explicit `.Returns(...)` so the handler doesn't receive a `null` `Result<T>`) and only awaits the real handler invocation afterward. All three Application/Infrastructure/Domain suites passed on their first actual run once this was fixed pre-emptively.
+
+### 4. Test counts vs. plan estimate
+Actuals: 137 Domain (exact match), 229 Application (plan estimated 228 — one extra edge-case test), 93 Infrastructure (plan estimated 92 — one extra edge-case test: `GetById_Unknown_ReturnsNull` alongside `GetById_ReturnsCorrectAudit`). Total 459 vs. the plan's 457 estimate.

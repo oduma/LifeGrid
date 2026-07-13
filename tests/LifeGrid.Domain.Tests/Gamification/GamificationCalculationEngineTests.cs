@@ -211,4 +211,22 @@ public sealed class GamificationCalculationEngineTests
 
         result.Should().Be(reward);
     }
+
+    // ── ApplyVicePenalty ───────────────────────────────────────────────────────
+
+    [Fact]
+    public void ApplyVicePenalty_DangerLevel5_Gp82_ReturnsGp77()
+    {
+        var newGp = GamificationCalculationEngine.ApplyVicePenalty(currentGp: 82.0, dangerLevel: 5);
+
+        newGp.Should().Be(77.0);
+    }
+
+    [Fact]
+    public void ApplyVicePenalty_ClampsAtZero()
+    {
+        var newGp = GamificationCalculationEngine.ApplyVicePenalty(currentGp: 3.0, dangerLevel: 10);
+
+        newGp.Should().Be(0.0);
+    }
 }

@@ -4,6 +4,7 @@ using LifeGrid.Application.Goal;
 using LifeGrid.Application.Habit;
 using LifeGrid.Application.Home;
 using LifeGrid.Application.UserProfile;
+using LifeGrid.Application.ViceCheck;
 using LifeGrid.Application.Week;
 using NSubstitute;
 using GoalAggregate = LifeGrid.Domain.Goal.Goal;
@@ -19,10 +20,15 @@ public sealed class GetCurrentWeekHabitsQueryTests
     private readonly IHabitRepository                 _habitRepo   = Substitute.For<IHabitRepository>();
     private readonly IUserProfileRepository           _profileRepo = Substitute.For<IUserProfileRepository>();
     private readonly IDateTimeProvider                _clock       = Substitute.For<IDateTimeProvider>();
+    private readonly IViceCheckAuditRepository        _auditRepo   = Substitute.For<IViceCheckAuditRepository>();
     private readonly GetCurrentWeekHabitsQueryHandler _handler;
 
     public GetCurrentWeekHabitsQueryTests()
-        => _handler = new GetCurrentWeekHabitsQueryHandler(_weekRepo, _goalRepo, _habitRepo, _profileRepo, _clock);
+    {
+        _auditRepo.HasAuditForWeekAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(false);
+        _handler = new GetCurrentWeekHabitsQueryHandler(
+            _weekRepo, _goalRepo, _habitRepo, _profileRepo, _clock, _auditRepo);
+    }
 
     // ── temporal resolution ───────────────────────────────────────────────────
 
